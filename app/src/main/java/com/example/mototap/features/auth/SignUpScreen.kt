@@ -619,6 +619,7 @@ fun AdditionalInfoStep(
     val address by viewModel.address.collectAsState()
     val garageMode by viewModel.garageMode.collectAsState()
     val garageInviteCode by viewModel.garageInviteCode.collectAsState()
+    val inviteVerified by viewModel.inviteVerified.collectAsState()
 
     val canComplete = when (role) {
         "driver" -> SignupValidation.validateDriverStep3(
@@ -632,11 +633,11 @@ fun AdditionalInfoStep(
             inviteCode = garageInviteCode,
             institutionName = institutionName,
             experienceYears = experienceYears,
-            certificatePhotoUrl = certificatePhotoUrl,
             garagePhotos = garagePhotos,
             latitude = latitude,
             longitude = longitude,
             address = address,
+            inviteVerified = inviteVerified,
         ) == null
         else -> SignupValidation.validateProviderStep3(
             institutionName = institutionName,
@@ -816,25 +817,16 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
     val experienceYears by viewModel.experienceYears.collectAsState()
     val address by viewModel.address.collectAsState()
     val garagePhotos by viewModel.garagePhotos.collectAsState()
-    val idPhotoUrl by viewModel.idPhotoUrl.collectAsState()
-    val certificatePhotoUrl by viewModel.certificatePhotoUrl.collectAsState()
     val latitude by viewModel.latitude.collectAsState()
     val longitude by viewModel.longitude.collectAsState()
-    val availableServices by viewModel.availableServices.collectAsState()
     val garageMode by viewModel.garageMode.collectAsState()
-    val garageInviteCode by viewModel.garageInviteCode.collectAsState()
     val joinMode = garageMode.trim() == "join"
-
-    val certLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { viewModel.uploadImage(context, it, "certificate") }
-    }
 
     val garageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let { viewModel.uploadImage(context, it, "garage") }
     }
 
     val localContext = LocalContext.current
-    val scope = rememberCoroutineScope()
     var showMap by remember { mutableStateOf(false) }
 
     // Automatic Address Reflection when Location changes
@@ -944,14 +936,6 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
             label = { Text("Institution Name", color = Color.Gray) },
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
-        VerificationItem(
-            label = "Front Photo of Mechanic Certification",
-            description = "Choose a photo or PDF from your device",
-            previewUrl = certificatePhotoUrl,
-            onPickImage = { certLauncher.launch(arrayOf("image/*", "application/pdf")) }
         )
         Spacer(modifier = Modifier.height(16.dp))
     }

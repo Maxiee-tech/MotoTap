@@ -60,6 +60,13 @@ class FirebaseAuthRepository(
             else -> "DRIVER"
         }
 
+    /** Drivers are auto-approved; business accounts start pending (matches web). */
+    private fun defaultProfileStatusForRole(role: String): String =
+        when (toFirestoreRole(role)) {
+            "MECHANIC", "PARTS_DEALER" -> "PENDING"
+            else -> "APPROVED"
+        }
+
     private fun normalizeUrl(url: String?): String {
         val s = url?.trim().orEmpty()
         return if (s.startsWith("//")) "https:$s" else s
@@ -202,7 +209,7 @@ class FirebaseAuthRepository(
                 "phone" to phone,
                 "phoneNumber" to phone,
                 "role" to firestoreRole,
-                "status" to "PENDING",
+                "status" to defaultProfileStatusForRole(role),
                 "onboardingStep" to 1,
                 "onboardingComplete" to false,
                 "rating" to 0,

@@ -36,6 +36,7 @@ service cloud.firestore {
         && (!('idPhotoUrl' in data) || (data.idPhotoUrl is string && data.idPhotoUrl.size() <= 2048))
         && (!('idNumber' in data) || (data.idNumber is string && data.idNumber.size() <= 64))
         && (!('vehicleType' in data) || (data.vehicleType is string && data.vehicleType.size() <= 64))
+        && (!('vehicleMake' in data) || (data.vehicleMake is string && data.vehicleMake.size() <= 64))
         && (!('vehicleModel' in data) || (data.vehicleModel is string && data.vehicleModel.size() <= 64))
         && (!('numberPlate' in data) || (data.numberPlate is string && data.numberPlate.size() <= 32))
         && (!('vehiclePhotoUrl' in data) || (data.vehiclePhotoUrl is string && data.vehiclePhotoUrl.size() <= 2048))
@@ -169,7 +170,25 @@ service cloud.firestore {
         && request.resource.data.email == resource.data.email
         && request.resource.data.role == resource.data.role
         && request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false)
-        && request.resource.data.status == resource.data.status
+        && (
+          request.resource.data.status == resource.data.status
+          || (
+            resource.data.status == 'PENDING'
+            && request.resource.data.status == 'APPROVED'
+            && (
+              (
+                ('garageId' in resource.data)
+                && resource.data.garageId is string
+                && resource.data.garageId.size() > 0
+                && isGarageMember(resource.data.garageId)
+              )
+              || (
+                (resource.data.role == 'driver' || resource.data.role == 'DRIVER')
+                && request.resource.data.onboardingComplete == true
+              )
+            )
+          )
+        )
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 120

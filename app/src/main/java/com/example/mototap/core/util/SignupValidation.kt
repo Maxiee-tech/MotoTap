@@ -18,15 +18,14 @@ object SignupValidation {
     }
 
     /**
-     * Mechanic step 3. Joiners only need experience + a verified invite code
-     * (no personal cert / garage docs). Owners still upload full garage docs.
+     * Mechanic step 3. Joiners only need experience + a verified invite code.
+     * Owners upload garage docs (no personal certification photo).
      */
     fun validateMechanicStep3(
         garageMode: String,
         inviteCode: String,
         institutionName: String,
         experienceYears: String,
-        certificatePhotoUrl: String,
         garagePhotos: List<String>,
         latitude: Double?,
         longitude: Double?,
@@ -44,17 +43,13 @@ object SignupValidation {
             return null
         }
 
-        if (certificatePhotoUrl.isBlank()) return "Please upload your certification photo."
-        return validateProviderStep3(
-            institutionName = institutionName,
-            experienceYears = experienceYears,
-            certificatePhotoUrl = certificatePhotoUrl,
-            garagePhotos = garagePhotos,
-            latitude = latitude,
-            longitude = longitude,
-            address = address,
-            locationLabel = "garage",
-        )
+        if (institutionName.isBlank()) return "Please enter your garage name."
+        if (address.isBlank()) return "Please enter your garage address."
+        if (garagePhotos.isEmpty()) return "Please upload a front photo of your garage."
+        if (latitude == null || longitude == null) {
+            return "Please pin your garage location on the map."
+        }
+        return null
     }
 
     fun validateProviderStep3(
