@@ -9,6 +9,7 @@ import com.example.mototap.core.model.GarageMemberRole
 import com.example.mototap.core.model.GarageMemberStatus
 import com.example.mototap.core.repository.AuthRepository
 import com.example.mototap.core.repository.GarageRepository
+import com.google.firebase.auth.ActionCodeSettings
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
@@ -33,6 +34,7 @@ class FirebaseAuthRepository(
 
     companion object {
         private const val PUBLIC_PROFILES_COLLECTION = "publicProfiles"
+        private const val PASSWORD_RESET_CONTINUE_URL = "https://mototap.co.ke/"
         private val MECHANIC_ROLE_QUERY = listOf("mechanic", "MECHANIC")
         private val PARTS_DEALER_ROLE_QUERY = listOf("parts_dealer", "PARTS_DEALER")
     }
@@ -181,7 +183,11 @@ class FirebaseAuthRepository(
         }
 
         return try {
-            auth.sendPasswordResetEmail(trimmed).await()
+            val actionCodeSettings = ActionCodeSettings.newBuilder()
+                .setUrl(PASSWORD_RESET_CONTINUE_URL)
+                .setHandleCodeInApp(false)
+                .build()
+            auth.sendPasswordResetEmail(trimmed, actionCodeSettings).await()
             Result.success(Unit)
         } catch (e: FirebaseAuthInvalidUserException) {
             // Match web: don't reveal whether the account exists.

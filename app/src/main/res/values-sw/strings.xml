@@ -9,7 +9,7 @@
     <string name="forgot_password_subtitle">Weka barua pepe yako — ikiwa akaunti ipo, tutatuma kiungo salama cha kuweka upya.</string>
     <string name="forgot_password_button">Tuma kiungo cha kuweka upya</string>
     <string name="forgot_password_sending">Inatuma…</string>
-    <string name="forgot_password_success">Ikiwa akaunti ipo kwa barua pepe hiyo, kiungo cha kuweka upya kimetumwa. Angalia kikasha chako na folda ya barua taka, kisha ingia kwa nenosiri jipya.</string>
+    <string name="forgot_password_success">Ikiwa akaunti ipo kwa barua pepe hiyo, kiungo cha kuweka upya kimetumwa. Angalia kikasha chako na folda ya barua taka. Kiungo kinatumika kwa takriban saa 1 — fungua barua pepe ya hivi karibuni, weka nenosiri jipya kwenye ukurasa, kisha ingia.</string>
     <string name="forgot_password_back">Rudi kwenye Kuingia</string>
     <string name="login_phone_label">Nambari ya simu</string>
     <string name="login_pin_label">PIN / Nenosiri</string>

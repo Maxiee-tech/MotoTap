@@ -142,7 +142,7 @@
     <string name="forgot_password_subtitle">Enter your email — if an account exists, we\'ll send a secure reset link.</string>
     <string name="forgot_password_button">Send reset link</string>
     <string name="forgot_password_sending">Sending…</string>
-    <string name="forgot_password_success">If an account exists for that email, a reset link has been sent. Check your inbox and spam folder, then sign in with your new password.</string>
+    <string name="forgot_password_success">If an account exists for that email, a reset link has been sent. Check your inbox and spam folder. The link is valid for about 1 hour — open the latest email and set your new password on the page, then sign in.</string>
     <string name="forgot_password_back">Back to Sign In</string>
     <string name="signup_title">Create account</string>
     <string name="signup_subtitle">Join as a driver, mechanic, or parts dealer. Complete all steps to submit your profile for review.</string>
