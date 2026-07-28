@@ -290,6 +290,13 @@ fun PartsDealerInfoCard(
                         color = Color.Gray,
                         fontSize = 14.sp
                     )
+                    val hoursStatus = com.example.mototap.core.util.getOpenClosedStatus(dealer.workingHours)
+                    Text(
+                        text = hoursStatus.label,
+                        color = if (hoursStatus.isOpen) Color(0xFF0A7A32) else Color(0xFFC00000),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
                 }
                 IconButton(onClick = onDismiss) {
                     Text("X", fontWeight = FontWeight.Bold, color = Color.Gray)

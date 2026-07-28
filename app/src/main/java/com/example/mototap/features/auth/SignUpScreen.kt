@@ -74,19 +74,22 @@ fun SignUpScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            "Step ${signUpStep.ordinal + 1}: ${when(signUpStep) {
-                                SignUpStep.IDENTITY_VERIFICATION -> "Identity"
-                                SignUpStep.ADDITIONAL_INFO -> "Details"
-                                else -> ""
-                            }}",
+                            when (signUpStep) {
+                                SignUpStep.IDENTITY_VERIFICATION -> "Step 2: Identity"
+                                SignUpStep.ADDITIONAL_INFO -> "Step 3: Details"
+                                SignUpStep.WORKING_HOURS -> "Working hours"
+                                else -> "Sign up"
+                            },
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { viewModel.previousStep() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        if (signUpStep != SignUpStep.WORKING_HOURS) {
+                            IconButton(onClick = { viewModel.previousStep() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MotoRed)
@@ -100,6 +103,55 @@ fun SignUpScreen(
                 SignUpStep.BASIC_INFO -> BasicInfoStep(viewModel, onNavigateToLogin)
                 SignUpStep.IDENTITY_VERIFICATION -> IdentityVerificationStep(viewModel, appContext)
                 SignUpStep.ADDITIONAL_INFO -> AdditionalInfoStep(viewModel, appContext, onSignUpSuccess)
+                SignUpStep.WORKING_HOURS -> WorkingHoursStep(viewModel, onSignUpSuccess)
+            }
+        }
+    }
+}
+
+@Composable
+fun WorkingHoursStep(viewModel: AuthViewModel, onSignUpSuccess: (String?) -> Unit) {
+    val uiState by viewModel.uiState.collectAsState()
+    val hours by viewModel.workingHours.collectAsState()
+    val role by viewModel.role.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Update your working hours so drivers can see when you are open.",
+            color = Color.LightGray,
+            fontSize = 14.sp,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        WorkingHoursEditor(
+            hours = hours,
+            onHoursChange = { viewModel.workingHours.value = it },
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        if (uiState is AuthUiState.Error) {
+            Text((uiState as AuthUiState.Error).message, color = Color.Red)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        Button(
+            onClick = {
+                viewModel.saveWorkingHours {
+                    onSignUpSuccess(role)
+                }
+            },
+            enabled = uiState !is AuthUiState.Loading,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MotoRed),
+        ) {
+            if (uiState is AuthUiState.Loading) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp))
+            } else {
+                Text("Save working hours")
             }
         }
     }
@@ -1005,6 +1057,13 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
                 )
             }
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        val hours by viewModel.workingHours.collectAsState()
+        WorkingHoursEditor(
+            hours = hours,
+            onHoursChange = { viewModel.workingHours.value = it },
+        )
     }
 }
 
@@ -1194,5 +1253,12 @@ fun PartsDealerAdditionalInfo(viewModel: AuthViewModel, context: android.content
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )
         }
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+    val hours by viewModel.workingHours.collectAsState()
+    WorkingHoursEditor(
+        hours = hours,
+        onHoursChange = { viewModel.workingHours.value = it },
     )
 }

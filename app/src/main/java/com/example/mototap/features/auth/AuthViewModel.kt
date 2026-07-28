@@ -27,7 +27,8 @@ sealed class AuthUiState {
 enum class SignUpStep {
     BASIC_INFO,
     IDENTITY_VERIFICATION,
-    ADDITIONAL_INFO
+    ADDITIONAL_INFO,
+    WORKING_HOURS,
 }
 
 class AuthViewModel(
@@ -75,6 +76,9 @@ class AuthViewModel(
      val garageInviteCode = MutableStateFlow("")
      val inviteVerified = MutableStateFlow(false)
      val verifiedGarageName = MutableStateFlow("")
+     val workingHours = MutableStateFlow(com.example.mototap.core.util.defaultWorkingHours())
+     private val _needsWorkingHoursOnly = MutableStateFlow(false)
+     val needsWorkingHoursOnly: StateFlow<Boolean> = _needsWorkingHoursOnly.asStateFlow()
 
     fun clearVerifiedInvite() {
         inviteVerified.value = false
@@ -117,13 +121,24 @@ class AuthViewModel(
     fun isNameValid(name: String): Boolean = SignupValidation.isNameValid(name)
 
     fun getSignupResumeStep(profile: UserProfile?): SignUpStep? {
-        if (profile == null || profile.onboardingComplete) return null
-        val completedStep = profile.onboardingStep ?: 0
-        return when {
-            completedStep >= 2 -> SignUpStep.ADDITIONAL_INFO
-            completedStep >= 1 -> SignUpStep.IDENTITY_VERIFICATION
-            else -> SignUpStep.BASIC_INFO
+        if (profile == null) return null
+        if (!profile.onboardingComplete) {
+            val completedStep = profile.onboardingStep ?: 0
+            return when {
+                completedStep >= 2 -> SignUpStep.ADDITIONAL_INFO
+                completedStep >= 1 -> SignUpStep.IDENTITY_VERIFICATION
+                else -> SignUpStep.BASIC_INFO
+            }
         }
+        if (com.example.mototap.core.util.needsWorkingHoursUpdate(
+                profile.role.name,
+                profile.garageRole,
+                profile.workingHours,
+            )
+        ) {
+            return SignUpStep.WORKING_HOURS
+        }
+        return null
     }
 
     fun loadProfileIntoSignupState(profile: UserProfile) {
@@ -152,6 +167,14 @@ class AuthViewModel(
         address.value = profile.address
         garagePhotos.value = profile.garagePhotos
         availableServices.value = profile.availableServices
+        workingHours.value = profile.workingHours
+            ?: com.example.mototap.core.util.defaultWorkingHours()
+        _needsWorkingHoursOnly.value = profile.onboardingComplete &&
+            com.example.mototap.core.util.needsWorkingHoursUpdate(
+                profile.role.name,
+                profile.garageRole,
+                profile.workingHours,
+            )
         _userProfile.value = profile
     }
 
@@ -362,6 +385,7 @@ class AuthViewModel(
             SignUpStep.BASIC_INFO -> SignUpStep.IDENTITY_VERIFICATION
             SignUpStep.IDENTITY_VERIFICATION -> SignUpStep.ADDITIONAL_INFO
             SignUpStep.ADDITIONAL_INFO -> SignUpStep.ADDITIONAL_INFO
+            SignUpStep.WORKING_HOURS -> SignUpStep.WORKING_HOURS
         }
         _signUpStep.value = next
     }
@@ -371,6 +395,7 @@ class AuthViewModel(
             SignUpStep.BASIC_INFO -> SignUpStep.BASIC_INFO
             SignUpStep.IDENTITY_VERIFICATION -> SignUpStep.BASIC_INFO
             SignUpStep.ADDITIONAL_INFO -> SignUpStep.IDENTITY_VERIFICATION
+            SignUpStep.WORKING_HOURS -> SignUpStep.WORKING_HOURS
         }
         _signUpStep.value = prev
     }
@@ -465,6 +490,7 @@ class AuthViewModel(
                 longitude = longitude.value,
                 address = address.value,
                 inviteVerified = inviteVerified.value,
+                workingHours = if (garageMode.value.trim() == "join") null else workingHours.value,
             )
             "parts_dealer" -> SignupValidation.validateProviderStep3(
                 institutionName = institutionName.value,
@@ -475,6 +501,7 @@ class AuthViewModel(
                 longitude = longitude.value,
                 address = address.value,
                 locationLabel = "shop",
+                workingHours = workingHours.value,
             )
             else -> SignupValidation.validateDriverStep3(
                 vehicleMake = vehicleMake.value,
@@ -505,6 +532,7 @@ class AuthViewModel(
                     address = address.value,
                     garageMode = garageMode.value,
                     inviteCode = garageInviteCode.value,
+                    workingHours = if (joinMode) null else workingHours.value,
                 )
             } else if (role.value == "parts_dealer") {
                 authRepository.completeSignupStep3PartsDealer(
@@ -516,6 +544,7 @@ class AuthViewModel(
                     latitude = latitude.value!!,
                     longitude = longitude.value!!,
                     address = address.value,
+                    workingHours = workingHours.value,
                 )
             } else {
                 authRepository.completeSignupStep3Driver(
@@ -534,6 +563,29 @@ class AuthViewModel(
             } else {
                 _uiState.value = AuthUiState.Error(
                     result.exceptionOrNull()?.message ?: "Failed to complete sign up"
+                )
+            }
+        }
+    }
+
+    fun saveWorkingHours(onSuccess: () -> Unit) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val hoursError = com.example.mototap.core.util.validateWorkingHours(workingHours.value)
+        if (hoursError != null) {
+            _uiState.value = AuthUiState.Error(hoursError)
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = AuthUiState.Loading
+            val result = authRepository.saveWorkingHours(userId, workingHours.value)
+            if (result.isSuccess) {
+                _needsWorkingHoursOnly.value = false
+                fetchUserProfile()
+                _uiState.value = AuthUiState.Success(role.value)
+                onSuccess()
+            } else {
+                _uiState.value = AuthUiState.Error(
+                    result.exceptionOrNull()?.message ?: "Failed to save working hours"
                 )
             }
         }

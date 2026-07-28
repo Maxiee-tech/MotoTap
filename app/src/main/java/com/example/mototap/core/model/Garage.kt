@@ -56,6 +56,7 @@ data class Garage(
     val memberCount: Int = 0,
     val skills: List<String> = emptyList(),
     val servicePrices: Map<String, Map<String, Long>> = emptyMap(),
+    val workingHours: com.example.mototap.core.util.WorkingHours? = null,
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
 )

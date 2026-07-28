@@ -5,10 +5,14 @@ import com.example.mototap.core.model.UserProfile
 import com.example.mototap.core.model.UserRole
 import com.example.mototap.core.model.VerificationStatus
 import com.example.mototap.core.model.Review
+import com.example.mototap.core.model.Garage
 import com.example.mototap.core.model.GarageMemberRole
 import com.example.mototap.core.model.GarageMemberStatus
 import com.example.mototap.core.repository.AuthRepository
 import com.example.mototap.core.repository.GarageRepository
+import com.example.mototap.core.util.WorkingHours
+import com.example.mototap.core.util.normalizeWorkingHours
+import com.example.mototap.core.util.workingHoursToFirestoreMap
 import com.google.firebase.auth.ActionCodeSettings
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.EmailAuthProvider
@@ -127,6 +131,10 @@ class FirebaseAuthRepository(
         userDoc.getString("garageId")?.trim()?.takeIf { it.isNotEmpty() }?.let { payload["garageId"] = it }
         userDoc.getDouble("rating")?.let { payload["rating"] = it }
         userDoc.getLong("reviewCount")?.let { payload["reviewCount"] = it }
+        val hours = normalizeWorkingHours(userDoc.get("workingHours"))
+        if (hours != null) {
+            payload["workingHours"] = workingHoursToFirestoreMap(hours)
+        }
 
         firestore.collection(PUBLIC_PROFILES_COLLECTION)
             .document(userId)
@@ -134,21 +142,26 @@ class FirebaseAuthRepository(
             .await()
     }
 
-    /** Fetch garage servicePrices for each mechanic's garageId (batched by unique id). */
+    /** Fetch garage servicePrices + workingHours for each mechanic's garageId. */
     private suspend fun hydrateGarageServicePrices(mechanics: List<UserProfile>): List<UserProfile> {
         val garageIds = mechanics.map { it.garageId.trim() }.filter { it.isNotEmpty() }.distinct()
         if (garageIds.isEmpty()) return mechanics
 
-        val priceByGarageId = HashMap<String, Map<String, Map<String, Long>>>()
+        val garageById = HashMap<String, Garage?>()
         garageIds.forEach { garageId ->
-            val garage = garageRepository.getGarage(garageId)
-            priceByGarageId[garageId] = garage?.servicePrices ?: emptyMap()
+            garageById[garageId] = garageRepository.getGarage(garageId)
         }
 
         return mechanics.map { mechanic ->
             val garageId = mechanic.garageId.trim()
             if (garageId.isEmpty()) mechanic
-            else mechanic.copy(garageServicePrices = priceByGarageId[garageId] ?: emptyMap())
+            else {
+                val garage = garageById[garageId]
+                mechanic.copy(
+                    garageServicePrices = garage?.servicePrices ?: emptyMap(),
+                    workingHours = garage?.workingHours ?: mechanic.workingHours,
+                )
+            }
         }
     }
 
@@ -306,9 +319,10 @@ class FirebaseAuthRepository(
                 ?: ""
 
             val garageId = document.getString("garageId") ?: ""
-            val garageServicePrices = if (garageId.isNotBlank()) {
-                garageRepository.getGarage(garageId)?.servicePrices ?: emptyMap()
-            } else emptyMap()
+            val garageDoc = if (garageId.isNotBlank()) garageRepository.getGarage(garageId) else null
+            val garageServicePrices = garageDoc?.servicePrices ?: emptyMap()
+            val workingHours = garageDoc?.workingHours
+                ?: normalizeWorkingHours(document.get("workingHours"))
 
             UserProfile(
                 id = userId,
@@ -358,6 +372,7 @@ class FirebaseAuthRepository(
                 onboardingComplete = document.getBoolean("onboardingComplete") == true,
                 servicePrices = normalizeServicePrices(document.get("servicePrices")),
                 garageServicePrices = garageServicePrices,
+                workingHours = workingHours,
             )
         } catch (e: Exception) {
             Log.e("FirebaseAuthRepo", "getUserProfile error: ${e.message}")
@@ -445,6 +460,7 @@ class FirebaseAuthRepository(
         address: String,
         garageMode: String,
         inviteCode: String,
+        workingHours: WorkingHours?,
     ): Result<Unit> {
         val joinMode = garageMode.trim() == "join"
         return try {
@@ -456,8 +472,6 @@ class FirebaseAuthRepository(
                     ?: return Result.failure(Exception("Invalid or expired garage invite code."))
                 val garage = lookup.garage
 
-                // Join before marking onboarding complete so dashboard auto-setup cannot
-                // create a competing solo garage during this request.
                 val joinResult = garageRepository.joinGarageWithInvite(
                     userId = userId,
                     inviteCode = inviteCode,
@@ -482,6 +496,9 @@ class FirebaseAuthRepository(
                     "onboardingComplete" to true,
                     "status" to "PENDING",
                 )
+                garage.workingHours?.let {
+                    payload["workingHours"] = workingHoursToFirestoreMap(it)
+                }
                 firestore.collection("users").document(userId).update(payload).await()
 
                 val refreshedSkills = firestore.collection("users").document(userId)
@@ -492,7 +509,8 @@ class FirebaseAuthRepository(
                 return Result.success(Unit)
             }
 
-            val payload = mapOf(
+            val hoursMap = workingHours?.let { workingHoursToFirestoreMap(it) }
+            val payload = mutableMapOf<String, Any?>(
                 "institutionName" to institutionName.trim(),
                 "experienceYears" to experienceYears.trim(),
                 "certificatePhotoUrl" to certificatePhotoUrl,
@@ -504,9 +522,9 @@ class FirebaseAuthRepository(
                 "onboardingComplete" to true,
                 "status" to "PENDING",
             )
+            if (hoursMap != null) payload["workingHours"] = hoursMap
             firestore.collection("users").document(userId).update(payload).await()
 
-            // Create a garage-of-one so the owner can invite staff and set shop prices.
             garageRepository.createGarageForOwner(
                 ownerId = userId,
                 profile = UserProfile(
@@ -517,9 +535,11 @@ class FirebaseAuthRepository(
                     latitude = latitude,
                     longitude = longitude,
                     garagePhotos = garagePhotos,
+                    workingHours = workingHours,
                 ),
             )
 
+            syncMechanicPublicProfile(userId, emptyList(), emptyMap())
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirebaseAuthRepo", "completeSignupStep3Mechanic error: ${e.message}")
@@ -536,10 +556,11 @@ class FirebaseAuthRepository(
         latitude: Double,
         longitude: Double,
         address: String,
+        workingHours: WorkingHours?,
     ): Result<Unit> {
-        // Parts dealers reuse the provider fields but never create a garage org.
         return try {
-            val payload = mapOf(
+            val hoursMap = workingHours?.let { workingHoursToFirestoreMap(it) }
+            val payload = mutableMapOf<String, Any?>(
                 "institutionName" to institutionName.trim(),
                 "experienceYears" to experienceYears.trim(),
                 "certificatePhotoUrl" to certificatePhotoUrl,
@@ -551,10 +572,74 @@ class FirebaseAuthRepository(
                 "onboardingComplete" to true,
                 "status" to "PENDING",
             )
+            if (hoursMap != null) payload["workingHours"] = hoursMap
             firestore.collection("users").document(userId).update(payload).await()
+
+            val userDoc = firestore.collection("users").document(userId).get().await()
+            val publicPayload = mutableMapOf<String, Any>(
+                "userId" to userId,
+                "name" to (userDoc.getString("name") ?: ""),
+                "role" to (userDoc.getString("role") ?: "PARTS_DEALER"),
+                "status" to "PENDING",
+                "institutionName" to institutionName.trim(),
+                "latitude" to latitude,
+                "longitude" to longitude,
+                "address" to address.trim(),
+                "garagePhotos" to garagePhotos,
+                "updatedAtMillis" to System.currentTimeMillis(),
+            )
+            userDoc.getString("profilePhotoUrl")?.let { publicPayload["profilePhotoUrl"] = it }
+            if (hoursMap != null) publicPayload["workingHours"] = hoursMap
+            firestore.collection(PUBLIC_PROFILES_COLLECTION)
+                .document(userId)
+                .set(publicPayload, com.google.firebase.firestore.SetOptions.merge())
+                .await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirebaseAuthRepo", "completeSignupStep3PartsDealer error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun saveWorkingHours(userId: String, workingHours: WorkingHours): Result<Unit> {
+        return try {
+            val hoursMap = workingHoursToFirestoreMap(workingHours)
+            val userRef = firestore.collection("users").document(userId)
+            userRef.update("workingHours", hoursMap).await()
+
+            val snap = userRef.get().await()
+            val garageId = snap.getString("garageId")?.trim().orEmpty()
+            val garageRole = snap.getString("garageRole")?.trim().orEmpty()
+            if (garageRole == GarageMemberRole.OWNER && garageId.isNotEmpty()) {
+                firestore.collection("garages").document(garageId)
+                    .update(
+                        mapOf(
+                            "workingHours" to hoursMap,
+                            "updatedAtMillis" to System.currentTimeMillis(),
+                        )
+                    )
+                    .await()
+            }
+
+            val role = snap.getString("role")?.lowercase()?.trim().orEmpty()
+            if (role == "mechanic") {
+                val skills = (snap.get("skills") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                syncMechanicPublicProfile(userId, skills, normalizeServicePrices(snap.get("servicePrices")))
+            } else {
+                firestore.collection(PUBLIC_PROFILES_COLLECTION).document(userId)
+                    .set(
+                        mapOf(
+                            "workingHours" to hoursMap,
+                            "updatedAtMillis" to System.currentTimeMillis(),
+                        ),
+                        com.google.firebase.firestore.SetOptions.merge(),
+                    )
+                    .await()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirebaseAuthRepo", "saveWorkingHours error: ${e.message}")
             Result.failure(e)
         }
     }
@@ -783,6 +868,7 @@ class FirebaseAuthRepository(
             availableParts = availableParts,
             partPrices = partPrices,
             servicePrices = servicePrices,
+            workingHours = normalizeWorkingHours(doc.get("workingHours")),
         )
     }
 

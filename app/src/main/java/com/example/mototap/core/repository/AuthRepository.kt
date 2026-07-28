@@ -57,6 +57,7 @@ interface AuthRepository {
         address: String,
         garageMode: String = "own",
         inviteCode: String = "",
+        workingHours: com.example.mototap.core.util.WorkingHours? = null,
     ): Result<Unit>
 
     suspend fun completeSignupStep3PartsDealer(
@@ -68,6 +69,12 @@ interface AuthRepository {
         latitude: Double,
         longitude: Double,
         address: String,
+        workingHours: com.example.mototap.core.util.WorkingHours? = null,
+    ): Result<Unit>
+
+    suspend fun saveWorkingHours(
+        userId: String,
+        workingHours: com.example.mototap.core.util.WorkingHours,
     ): Result<Unit>
 
     suspend fun getAllMechanics(): List<UserProfile>

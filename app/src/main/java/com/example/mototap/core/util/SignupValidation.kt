@@ -31,6 +31,7 @@ object SignupValidation {
         longitude: Double?,
         address: String,
         inviteVerified: Boolean = false,
+        workingHours: WorkingHours? = null,
     ): String? {
         if (experienceYears.isBlank()) return "Please select your experience."
 
@@ -49,6 +50,7 @@ object SignupValidation {
         if (latitude == null || longitude == null) {
             return "Please pin your garage location on the map."
         }
+        validateWorkingHours(workingHours)?.let { return it }
         return null
     }
 
@@ -61,6 +63,7 @@ object SignupValidation {
         longitude: Double?,
         address: String,
         locationLabel: String,
+        workingHours: WorkingHours? = null,
     ): String? {
         if (institutionName.isBlank()) return "Please enter your $locationLabel name."
         if (certificatePhotoUrl.isBlank()) return "Please upload your certification or license photo."
@@ -70,6 +73,7 @@ object SignupValidation {
         if (latitude == null || longitude == null) {
             return "Please pin your $locationLabel location on the map."
         }
+        validateWorkingHours(workingHours)?.let { return it }
         return null
     }
 

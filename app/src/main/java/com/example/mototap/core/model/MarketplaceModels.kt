@@ -95,6 +95,9 @@ data class UserProfile(
     val partPrices: Map<String, Long> = emptyMap(),
     // service name -> { "_default" | "Make" | "Make:Model" -> KSh price }
     val servicePrices: Map<String, Map<String, Long>> = emptyMap(),
+
+    // Weekly business hours (24h). Garage owners also mirror onto garages/{id}.
+    val workingHours: com.example.mototap.core.util.WorkingHours? = null,
 )
 
 data class MechanicProfile(

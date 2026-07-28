@@ -385,6 +385,13 @@ fun MechanicInfoCard(
                 color = Color.DarkGray,
                 fontSize = 13.sp
             )
+            val hoursStatus = com.example.mototap.core.util.getOpenClosedStatus(mechanic.workingHours)
+            Text(
+                text = hoursStatus.label,
+                color = if (hoursStatus.isOpen) Color(0xFF0A7A32) else MotoRed,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp
+            )
             if (service.isNotBlank()) {
                 Text(
                     text = "Service: $service",

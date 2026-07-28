@@ -56,6 +56,7 @@ class FirebaseGarageRepository(
             memberCount = (doc.getLong("memberCount") ?: 0L).toInt().coerceAtLeast(0),
             skills = skills,
             servicePrices = normalizeServicePrices(doc.get("servicePrices")),
+            workingHours = com.example.mototap.core.util.normalizeWorkingHours(doc.get("workingHours")),
             createdAtMillis = doc.getLong("createdAtMillis") ?: 0L,
             updatedAtMillis = doc.getLong("updatedAtMillis") ?: 0L,
         )
@@ -151,6 +152,11 @@ class FirebaseGarageRepository(
                 "memberCount" to 1L,
                 "skills" to emptyList<String>(),
                 "servicePrices" to emptyMap<String, Any>(),
+                "workingHours" to (
+                    profile.workingHours?.let {
+                        com.example.mototap.core.util.workingHoursToFirestoreMap(it)
+                    } ?: emptyMap<String, Any>()
+                ),
                 "createdAtMillis" to now,
                 "updatedAtMillis" to now,
             )
