@@ -164,19 +164,25 @@ fun getOpenClosedStatus(hours: WorkingHours?, nowMillis: Long = System.currentTi
     }
 }
 
-/** Business accounts that own shop hours (owners + parts dealers; not join-only mechanics). */
+/** True when this account is allowed to set shop hours (garage owner or parts dealer — not joined staff). */
+fun canManageWorkingHours(roleName: String?, garageRole: String?): Boolean {
+    val role = roleName?.trim()?.lowercase().orEmpty()
+    val isBusiness = role == "mechanic" || role == "parts_dealer" || role == "parts dealer"
+    if (!isBusiness) return false
+    // Joined garage mechanics inherit the owner's hours and must not edit them.
+    val memberRole = garageRole?.trim()?.lowercase().orEmpty()
+    if (memberRole == "mechanic") return false
+    return true
+}
+
+/** Garage owners and parts dealers must publish weekly working hours; joined staff do not. */
 fun needsWorkingHoursUpdate(
     roleName: String?,
     garageRole: String?,
     workingHours: WorkingHours?,
 ): Boolean {
-    val role = roleName?.trim()?.lowercase().orEmpty()
-    val isBusiness = role == "mechanic" || role == "parts_dealer" || role == "parts dealer"
-    if (!isBusiness) return false
-    if (hasValidWorkingHours(workingHours)) return false
-    // Joining mechanics inherit garage hours — only gate when they have no hours yet.
-    // Still prompt them so map badges work if garage hours were never set.
-    return true
+    if (!canManageWorkingHours(roleName, garageRole)) return false
+    return !hasValidWorkingHours(workingHours)
 }
 
 private fun parseMinutes(value: String): Int? {

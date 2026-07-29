@@ -11,6 +11,7 @@ import com.example.mototap.core.model.GarageMemberStatus
 import com.example.mototap.core.repository.AuthRepository
 import com.example.mototap.core.repository.GarageRepository
 import com.example.mototap.core.util.WorkingHours
+import com.example.mototap.core.util.canManageWorkingHours
 import com.example.mototap.core.util.normalizeWorkingHours
 import com.example.mototap.core.util.workingHoursToFirestoreMap
 import com.google.firebase.auth.ActionCodeSettings
@@ -604,13 +605,20 @@ class FirebaseAuthRepository(
 
     override suspend fun saveWorkingHours(userId: String, workingHours: WorkingHours): Result<Unit> {
         return try {
-            val hoursMap = workingHoursToFirestoreMap(workingHours)
             val userRef = firestore.collection("users").document(userId)
-            userRef.update("workingHours", hoursMap).await()
-
             val snap = userRef.get().await()
+            val role = snap.getString("role")?.lowercase()?.trim().orEmpty()
             val garageId = snap.getString("garageId")?.trim().orEmpty()
             val garageRole = snap.getString("garageRole")?.trim().orEmpty()
+            if (!canManageWorkingHours(role, garageRole)) {
+                return Result.failure(
+                    IllegalStateException("Only the garage owner can update working hours."),
+                )
+            }
+
+            val hoursMap = workingHoursToFirestoreMap(workingHours)
+            userRef.update("workingHours", hoursMap).await()
+
             if (garageRole == GarageMemberRole.OWNER && garageId.isNotEmpty()) {
                 firestore.collection("garages").document(garageId)
                     .update(
@@ -622,7 +630,6 @@ class FirebaseAuthRepository(
                     .await()
             }
 
-            val role = snap.getString("role")?.lowercase()?.trim().orEmpty()
             if (role == "mechanic") {
                 val skills = (snap.get("skills") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                 syncMechanicPublicProfile(userId, skills, normalizeServicePrices(snap.get("servicePrices")))
