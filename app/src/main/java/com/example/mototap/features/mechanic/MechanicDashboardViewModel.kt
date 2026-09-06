@@ -12,7 +12,6 @@ import com.example.mototap.core.repository.AuthRepository
 import com.example.mototap.core.repository.GarageRepository
 import com.example.mototap.core.repository.JobRepository
 import com.example.mototap.core.util.DEFAULT_PRICE_KEY
-import com.example.mototap.core.util.allSelectedServicesPriced
 import com.example.mototap.core.util.buildServicePricesPayload
 import com.example.mototap.core.util.buildVehiclePriceKey
 import com.example.mototap.core.util.getDefaultServicePrice
