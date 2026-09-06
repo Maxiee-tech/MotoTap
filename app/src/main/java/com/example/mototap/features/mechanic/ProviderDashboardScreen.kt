@@ -198,19 +198,15 @@ fun ProviderDashboardScreen(
                         },
                         modifier = Modifier.padding(bottom = 80.dp),
                         showPrices = true,
-                        introText = "Set shop-wide make/model prices for each service. Towing rates are per kilometre (KSh/km).",
+                        introText = "Optionally set shop-wide make/model prices. Towing rates are per kilometre (KSh/km) by make and model. Drivers see a mechanic's personal price when set; otherwise these garage prices apply.",
                     )
 
                     val canSave = uiState.garageSelectedSkills.isNotEmpty() &&
-                        allSelectedServicesPriced(
-                            uiState.garageSelectedSkills,
-                            uiState.garageServicePrices,
-                            uiState.garageVehiclePrices,
-                        )
+                        !uiState.isSavingGarageCatalog
 
                     Button(
                         onClick = { viewModel.saveGarageCatalog { showGarageCatalog = false } },
-                        enabled = canSave && !uiState.isSavingGarageCatalog,
+                        enabled = canSave,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(16.dp)
@@ -244,12 +240,7 @@ fun ProviderDashboardScreen(
                     )
 
                     val canSaveServices = uiState.selectedSkills.isNotEmpty() &&
-                        (uiState.isGarageMember ||
-                            allSelectedServicesPriced(
-                                uiState.selectedSkills,
-                                uiState.servicePrices,
-                                uiState.serviceVehiclePrices,
-                            ))
+                        !uiState.isSavingServices
 
                     if (canSaveServices) {
                         Button(
@@ -272,22 +263,6 @@ fun ProviderDashboardScreen(
                             Text(
                                 if (uiState.isSavingServices) "SAVING..." else "SAVE & CONTINUE",
                                 fontWeight = FontWeight.Bold
-                            )
-                        }
-                    } else if (uiState.selectedSkills.isNotEmpty()) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            color = Color.DarkGray,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                "Enter a price for every selected service to continue",
-                                color = Color.White,
-                                modifier = Modifier.padding(16.dp),
-                                textAlign = TextAlign.Center
                             )
                         }
                     } else {
@@ -483,18 +458,7 @@ fun ProviderDashboardScreen(
                                         Text(
                                             text = when {
                                                 uiState.selectedSkills.isEmpty() -> "No services selected"
-                                                uiState.isGarageMember ->
-                                                    "${uiState.selectedSkills.size} service(s) selected"
-                                                else -> {
-                                                    val pricedCount = uiState.selectedSkills.count { skill ->
-                                                        allSelectedServicesPriced(
-                                                            listOf(skill),
-                                                            uiState.servicePrices,
-                                                            uiState.serviceVehiclePrices,
-                                                        )
-                                                    }
-                                                    "$pricedCount of ${uiState.selectedSkills.size} services priced"
-                                                }
+                                                else -> "${uiState.selectedSkills.size} service(s) selected"
                                             },
                                             color = Color.White,
                                             fontSize = 14.sp
@@ -559,9 +523,9 @@ fun ProviderDashboardScreen(
                                             )
                                             Text(
                                                 text = if (uiState.garageSelectedSkills.isEmpty())
-                                                    "Set shop prices for your garage"
+                                                    "Optionally set shop prices for your garage"
                                                 else
-                                                    "${uiState.garageSelectedSkills.size} garage service(s) priced",
+                                                    "${uiState.garageSelectedSkills.size} garage service(s)",
                                                 color = Color.White,
                                                 fontSize = 14.sp
                                             )
@@ -773,9 +737,9 @@ fun MechanicServiceSelection(
         item {
             Text(
                 text = introText ?: if (showPrices) {
-                    "Select services and set a price for each make and model. Towing uses KSh/km; other services use KSh."
+                    "Choose the services you offer. Pricing is optional — you can set a base price or specific vehicle rates, or leave them blank to list the service without a price."
                 } else {
-                    "Select the services you can offer. Prices are set from the garage catalog."
+                    "Choose the services you personally deliver. Prices come from your garage — drivers see those rates when booking you."
                 },
                 color = Color.LightGray,
                 fontSize = 14.sp,
@@ -845,12 +809,10 @@ fun ExpandableCategory(
                 )
                 if (selectedInCategory > 0) {
                     Text(
-                        text = if (!showPrices) {
+                        text = if (!showPrices || pricedInCategory == 0) {
                             "$selectedInCategory selected"
-                        } else if (pricedInCategory == selectedInCategory) {
-                            "$selectedInCategory selected, all priced"
                         } else {
-                            "$selectedInCategory selected, $pricedInCategory priced"
+                            "$selectedInCategory selected, $pricedInCategory with prices"
                         },
                         color = MotoRed.copy(alpha = 0.7f),
                         fontSize = 12.sp
@@ -917,12 +879,32 @@ fun ExpandableCategory(
                             val perKm = towing
                             val vehicleRates = lookupVehiclePrices(vehiclePrices, service)
                             val flatAmount = lookupFlatPrice(servicePrices, service)
-                            if (!perKm && flatAmount != null && flatAmount > 0 && vehicleRates.isEmpty()) {
-                                Text(
-                                    text = "Saved flat rate: KSh ${com.example.mototap.core.util.formatKsh(flatAmount)} (add make/model rates below to match the website)",
-                                    color = Color.Gray,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(top = 8.dp),
+                            if (!perKm) {
+                                var draftFlatPrice by remember(service, flatAmount) {
+                                    mutableStateOf(flatAmount?.toString().orEmpty())
+                                }
+                                OutlinedTextField(
+                                    value = draftFlatPrice,
+                                    onValueChange = { value ->
+                                        draftFlatPrice = value.filter { it.isDigit() }
+                                        onPriceChanged(service, parsePriceInput(draftFlatPrice))
+                                    },
+                                    label = { Text("Optional base price (KSh)") },
+                                    placeholder = { Text("Leave blank if vehicle rates only", color = Color.Gray) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = MotoRed,
+                                        unfocusedBorderColor = Color.DarkGray,
+                                        focusedLabelColor = Color.Gray,
+                                        unfocusedLabelColor = Color.Gray,
+                                        cursorColor = MotoRed,
+                                    ),
                                 )
                             }
                             VehicleRatesEditor(
@@ -973,9 +955,9 @@ fun VehicleRatesEditor(
     ) {
         Text(
             text = if (perKm) {
-                "Set a per-km rate for each make and model. Drivers see the best match for their vehicle."
+                "Optionally set a per-km rate for a make and model. Drivers see the best match for their vehicle."
             } else {
-                "Set a price for each make and model. Drivers see the best match for their vehicle."
+                "Optionally set a price for a make and model. Drivers see the best match for their vehicle."
             },
             color = Color.Gray,
             fontSize = 12.sp,

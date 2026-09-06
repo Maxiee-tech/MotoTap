@@ -13,9 +13,9 @@ import com.example.mototap.core.repository.GarageRepository
 import com.example.mototap.core.repository.JobRepository
 import com.example.mototap.core.util.DEFAULT_PRICE_KEY
 import com.example.mototap.core.util.allSelectedServicesPriced
+import com.example.mototap.core.util.buildServicePricesPayload
 import com.example.mototap.core.util.buildVehiclePriceKey
 import com.example.mototap.core.util.getDefaultServicePrice
-import com.example.mototap.core.util.getMechanicServicePrice
 import com.example.mototap.core.util.isTowingService
 import com.example.mototap.core.util.toFlatServicePrices
 import com.example.mototap.core.util.vehicleOnlyPriceMap
@@ -305,20 +305,12 @@ class MechanicDashboardViewModel(
             return
         }
 
-        // Garage members offer skills only; pricing comes from the garage catalog.
-        if (!garageMember && !allSelectedServicesPriced(skills, prices, vehiclePrices)) {
-            _uiState.value = _uiState.value.copy(
-                infoMessage = "Enter a price for every selected service. Add at least one make/model rate (or a flat price for non-towing).",
-            )
-            return
-        }
-
         _uiState.value = _uiState.value.copy(isSavingServices = true)
         viewModelScope.launch {
             val payload = if (garageMember) {
                 emptyMap()
             } else {
-                buildNestedServicePricesPayload(skills, prices, vehiclePrices)
+                buildServicePricesPayload(skills, prices, vehiclePrices)
             }
             val result = authRepository.updateMechanicSkills(currentUserId, skills, payload, replacePrices = true)
             _uiState.value = _uiState.value.copy(isSavingServices = false)
@@ -331,9 +323,9 @@ class MechanicDashboardViewModel(
                     servicePrices = savedFlat,
                     serviceVehiclePrices = savedVehicle,
                     infoMessage = if (garageMember)
-                        "Saved ${skills.size} offered service(s)."
+                        "Saved ${skills.size} offered service(s). Prices come from your garage."
                     else
-                        "Saved ${skills.size} offered service(s) with prices.",
+                        "Saved ${skills.size} offered service(s).",
                 )
                 onSuccess()
             } else {
@@ -396,14 +388,7 @@ class MechanicDashboardViewModel(
             _uiState.value = _uiState.value.copy(infoMessage = "Select at least one garage service.")
             return
         }
-        if (!allSelectedServicesPriced(skills, flatPrices, vehiclePrices)) {
-            _uiState.value = _uiState.value.copy(
-                infoMessage = "Enter a price for every garage service. Add at least one make/model rate (or a flat price for non-towing).",
-            )
-            return
-        }
-
-        val nested = buildNestedServicePricesPayload(skills, flatPrices, vehiclePrices)
+        val nested = buildServicePricesPayload(skills, flatPrices, vehiclePrices)
 
         _uiState.value = _uiState.value.copy(isSavingGarageCatalog = true)
         viewModelScope.launch {
@@ -411,7 +396,7 @@ class MechanicDashboardViewModel(
             _uiState.value = _uiState.value.copy(isSavingGarageCatalog = false)
             if (result.isSuccess) {
                 _uiState.value = _uiState.value.copy(
-                    infoMessage = "Garage prices saved (${skills.size} services).",
+                    infoMessage = "Saved ${skills.size} garage service(s).",
                 )
                 onSuccess()
             } else {
@@ -420,29 +405,6 @@ class MechanicDashboardViewModel(
                 )
             }
         }
-    }
-
-    private fun buildNestedServicePricesPayload(
-        skills: List<String>,
-        flatPrices: Map<String, Long>,
-        vehiclePrices: Map<String, Map<String, Long>>,
-    ): Map<String, Map<String, Long>> {
-        val out = linkedMapOf<String, Map<String, Long>>()
-        skills.forEach { skill ->
-            val name = skill.trim()
-            if (name.isEmpty()) return@forEach
-            val merged = linkedMapOf<String, Long>()
-            // Match web: prefer make/model maps; optional flat _default as fallback.
-            vehicleOnlyPriceMap(vehiclePrices[name]).forEach { (key, amount) ->
-                if (amount > 0) merged[key] = amount
-            }
-            // Towing is vehicle-only (no flat default), same as web.
-            if (!isTowingService(name)) {
-                flatPrices[name]?.takeIf { it > 0 }?.let { merged[DEFAULT_PRICE_KEY] = it }
-            }
-            if (merged.isNotEmpty()) out[name] = merged
-        }
-        return out
     }
 
     fun regenerateInviteCode() {

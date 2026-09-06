@@ -130,6 +130,11 @@ fun MechanicDetailsPage(
                             towingKmError = "Enter a valid distance in km."
                             return@TextButton
                         }
+                        if (rate <= 0L) {
+                            towingKmError =
+                                "Unable to estimate towing total. Check the rate and distance."
+                            return@TextButton
+                        }
                         showTowingKmDialog = false
                         onBookService(highlightedService ?: "General Maintenance", parsed)
                     }

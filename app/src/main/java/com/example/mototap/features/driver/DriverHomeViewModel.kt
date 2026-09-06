@@ -196,28 +196,28 @@ class DriverHomeViewModel(
                 val userId = _uiState.value.currentUserId ?: return@launch
                 val state = _uiState.value
 
-                // Resolve the mechanic's listed price for this service and the
-                // driver's active vehicle; fall back to a default if unlisted.
+                // Listed price is optional (same as web). Unpriced services book at 0.
+                // Towing still needs a per-km rate to estimate a total.
                 val rateOrPrice = getMechanicServicePrice(
                     mechanic,
                     serviceName,
                     state.activeVehicleMake,
                     state.activeVehicleModel,
                 )
-                if (rateOrPrice == null || rateOrPrice <= 0L) {
-                    _uiState.update {
-                        it.copy(
-                            isLocating = false,
-                            infoMessage = "No listed price for this service and vehicle. Ask the mechanic to set a make/model rate.",
-                        )
-                    }
-                    return@launch
-                }
 
                 val towing = isTowingService(serviceName)
-                var resolvedPrice = rateOrPrice
+                var resolvedPrice = rateOrPrice ?: 0L
                 var description = "Direct booking"
                 if (towing) {
+                    if (rateOrPrice == null || rateOrPrice <= 0L) {
+                        _uiState.update {
+                            it.copy(
+                                isLocating = false,
+                                infoMessage = "Unable to estimate towing total. Check the rate and distance.",
+                            )
+                        }
+                        return@launch
+                    }
                     val km = estimatedKm
                     val total = km?.let { estimateTowingTotal(rateOrPrice, it) }
                     if (total == null) {

@@ -161,19 +161,31 @@ fun toFlatServicePrices(prices: Map<String, Map<String, Long>>): Map<String, Lon
 
 /**
  * Keep only prices for selected skills; omit unset or invalid values.
- * Accepts flat UI prices and returns normalized `_default` maps for Firestore.
+ * Accepts flat UI prices and vehicle make:model rates.
+ * Returns normalized Firestore payload.
  */
 fun buildServicePricesPayload(
     selectedSkills: List<String>,
-    pricesByName: Map<String, Long>,
+    flatPrices: Map<String, Long>,
+    vehiclePrices: Map<String, Map<String, Long>>,
 ): Map<String, Map<String, Long>> {
     val out = linkedMapOf<String, Map<String, Long>>()
     selectedSkills.forEach { skill ->
         val name = skill.trim()
         if (name.isEmpty()) return@forEach
-        getMechanicServicePrice(pricesByName, name)?.let { price ->
-            if (price > 0) out[name] = mapOf(DEFAULT_PRICE_KEY to price)
+        val merged = linkedMapOf<String, Long>()
+
+        // Vehicle make:model rates
+        vehicleOnlyPriceMap(vehiclePrices[name]).forEach { (key, amount) ->
+            if (amount > 0) merged[key] = amount
         }
+
+        // Flat default price (except for towing which is vehicle-only)
+        if (!isTowingService(name)) {
+            flatPrices[name]?.takeIf { it > 0 }?.let { merged[DEFAULT_PRICE_KEY] = it }
+        }
+
+        if (merged.isNotEmpty()) out[name] = merged
     }
     return out
 }
@@ -189,8 +201,8 @@ fun allSelectedServicesPriced(
 }
 
 /**
- * Whether every selected skill has a valid price entry.
- * A service is priced if it has any positive make/model rate and/or a `_default`.
+ * Display helper: whether every selected skill currently has a listed amount.
+ * Pricing is optional — save and booking do not require this to be true.
  */
 fun allSelectedServicesPriced(
     selectedSkills: List<String>,
