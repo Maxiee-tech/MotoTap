@@ -40,6 +40,7 @@ interface GarageRepository {
         ownerId: String,
         skills: List<String>,
         servicePrices: Map<String, Map<String, Long>>,
+        vehicleTypes: List<String> = emptyList(),
     ): Result<Garage>
 
     /** Ensure a solo mechanic has a garage document (lazy migration). */

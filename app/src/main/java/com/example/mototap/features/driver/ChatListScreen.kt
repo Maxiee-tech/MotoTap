@@ -153,7 +153,11 @@ fun ChatSummaryItem(
         ""
     }
     val isUnread = summary.unread
-    val label = formatInboxPartnerLabel(summary.otherUserName, summary.otherUserRole)
+    val label = formatInboxPartnerLabel(
+        summary.otherUserName,
+        summary.otherUserRole,
+        summary.garageName,
+    )
 
     Row(
         modifier = Modifier
@@ -248,8 +252,16 @@ fun ChatSummaryItem(
     }
 }
 
-private fun formatInboxPartnerLabel(name: String, role: String): String {
-    val roleLabel = when (role.trim().lowercase()) {
+private fun formatInboxPartnerLabel(name: String, role: String, garageName: String = ""): String {
+    val normalized = role.trim().lowercase()
+    val garage = garageName.trim()
+    if (garage.isNotEmpty() &&
+        (normalized == "mechanic" || normalized == "parts_dealer" || normalized == "parts dealer")
+    ) {
+        val shopLabel = if (normalized == "mechanic") "Garage" else "Shop"
+        return "$shopLabel · $garage"
+    }
+    val roleLabel = when (normalized) {
         "mechanic" -> "Mechanic"
         "parts_dealer", "parts dealer" -> "Parts dealer"
         "driver" -> "Driver"

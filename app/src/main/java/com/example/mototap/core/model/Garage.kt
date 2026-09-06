@@ -3,7 +3,7 @@ package com.example.mototap.core.model
 /**
  * Garage org model — field names aligned with web (js/models/Garage.js):
  * garages/{id}, garages/{id}/members/{uid}, garageInvites/{code},
- * users.garageId / garageRole, jobs.garageId, garages.skills / servicePrices.
+ * users.garageId / garageRole, jobs.garageId, garages.skills / servicePrices / vehicleTypes.
  */
 
 object GarageMemberRole {
@@ -47,6 +47,7 @@ data class Garage(
     val id: String = "",
     val name: String = "",
     val address: String = "",
+    val locationName: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,
     val garagePhotos: List<String> = emptyList(),
@@ -56,6 +57,7 @@ data class Garage(
     val memberCount: Int = 0,
     val skills: List<String> = emptyList(),
     val servicePrices: Map<String, Map<String, Long>> = emptyMap(),
+    val vehicleTypes: List<String> = emptyList(),
     val workingHours: com.example.mototap.core.util.WorkingHours? = null,
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,

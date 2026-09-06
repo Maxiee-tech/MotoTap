@@ -669,6 +669,7 @@ fun AdditionalInfoStep(
     val certificatePhotoUrl by viewModel.certificatePhotoUrl.collectAsState()
     val garagePhotos by viewModel.garagePhotos.collectAsState()
     val address by viewModel.address.collectAsState()
+    val locationName by viewModel.locationName.collectAsState()
     val garageMode by viewModel.garageMode.collectAsState()
     val garageInviteCode by viewModel.garageInviteCode.collectAsState()
     val inviteVerified by viewModel.inviteVerified.collectAsState()
@@ -689,6 +690,7 @@ fun AdditionalInfoStep(
             latitude = latitude,
             longitude = longitude,
             address = address,
+            locationName = locationName,
             inviteVerified = inviteVerified,
         ) == null
         else -> SignupValidation.validateProviderStep3(
@@ -699,6 +701,7 @@ fun AdditionalInfoStep(
             latitude = latitude,
             longitude = longitude,
             address = address,
+            locationName = locationName,
             locationLabel = "shop",
         ) == null
     }
@@ -868,6 +871,7 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
     val institutionName by viewModel.institutionName.collectAsState()
     val experienceYears by viewModel.experienceYears.collectAsState()
     val address by viewModel.address.collectAsState()
+    val locationName by viewModel.locationName.collectAsState()
     val garagePhotos by viewModel.garagePhotos.collectAsState()
     val latitude by viewModel.latitude.collectAsState()
     val longitude by viewModel.longitude.collectAsState()
@@ -892,11 +896,8 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
                 if (addressLine != null) {
                     viewModel.address.value = addressLine
                 }
-            } catch (e: Exception) {
-                // Fallback to coordinates if Geocoder fails
-                if (viewModel.address.value.isBlank() || viewModel.address.value.contains(",")) {
-                    viewModel.address.value = "$latitude, $longitude"
-                }
+            } catch (_: Exception) {
+                // Keep address empty so drivers never see raw coordinates.
             }
         }
     }
@@ -1016,16 +1017,6 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
     if (!joinMode) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = address,
-            onValueChange = { viewModel.address.value = it },
-            label = { Text("Garage Address", color = Color.Gray) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         Button(
             onClick = {
                 if (locationPermissionGranted) {
@@ -1045,6 +1036,33 @@ fun MechanicAdditionalInfo(viewModel: AuthViewModel, context: android.content.Co
             Spacer(modifier = Modifier.width(8.dp))
             Text(if (latitude != null) "Location Pinned" else "Pin Garage Location on Map")
         }
+
+        if (latitude != null && longitude != null) {
+            Text(
+                text = "Pinned coordinates: ${"%.5f".format(latitude)}, ${"%.5f".format(longitude)}",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        LocationNamePicker(
+            locationName = locationName,
+            onLocationNameChange = { viewModel.locationName.value = it },
+            latitude = latitude,
+            longitude = longitude,
+            onPlacePicked = { place ->
+                viewModel.locationName.value = place.name
+                if (place.lat != null && place.lng != null) {
+                    viewModel.latitude.value = place.lat
+                    viewModel.longitude.value = place.lng
+                }
+                if (place.address.isNotBlank()) {
+                    viewModel.address.value = place.address
+                }
+            },
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
         VerificationItem(
@@ -1073,6 +1091,7 @@ fun PartsDealerAdditionalInfo(viewModel: AuthViewModel, context: android.content
     val institutionName by viewModel.institutionName.collectAsState()
     val experienceYears by viewModel.experienceYears.collectAsState()
     val address by viewModel.address.collectAsState()
+    val locationName by viewModel.locationName.collectAsState()
     val garagePhotos by viewModel.garagePhotos.collectAsState()
     val certificatePhotoUrl by viewModel.certificatePhotoUrl.collectAsState()
     val latitude by viewModel.latitude.collectAsState()
@@ -1100,10 +1119,8 @@ fun PartsDealerAdditionalInfo(viewModel: AuthViewModel, context: android.content
                 if (addressLine != null) {
                     viewModel.address.value = addressLine
                 }
-            } catch (e: Exception) {
-                if (viewModel.address.value.isBlank() || viewModel.address.value.contains(",")) {
-                    viewModel.address.value = "$latitude, $longitude"
-                }
+            } catch (_: Exception) {
+                // Keep address empty so drivers never see raw coordinates.
             }
         }
     }
@@ -1213,16 +1230,6 @@ fun PartsDealerAdditionalInfo(viewModel: AuthViewModel, context: android.content
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    OutlinedTextField(
-        value = address,
-        onValueChange = { viewModel.address.value = it },
-        label = { Text("Shop Address", color = Color.Gray) },
-        modifier = Modifier.fillMaxWidth(),
-        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
     Button(
         onClick = {
             if (locationPermissionGranted) {
@@ -1242,6 +1249,33 @@ fun PartsDealerAdditionalInfo(viewModel: AuthViewModel, context: android.content
         Spacer(modifier = Modifier.width(8.dp))
         Text(if (latitude != null) "Location Pinned" else "Pin Shop Location on Map")
     }
+
+    if (latitude != null && longitude != null) {
+        Text(
+            text = "Pinned coordinates: ${"%.5f".format(latitude)}, ${"%.5f".format(longitude)}",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+    LocationNamePicker(
+        locationName = locationName,
+        onLocationNameChange = { viewModel.locationName.value = it },
+        latitude = latitude,
+        longitude = longitude,
+        onPlacePicked = { place ->
+            viewModel.locationName.value = place.name
+            if (place.lat != null && place.lng != null) {
+                viewModel.latitude.value = place.lat
+                viewModel.longitude.value = place.lng
+            }
+            if (place.address.isNotBlank()) {
+                viewModel.address.value = place.address
+            }
+        },
+    )
 
     Spacer(modifier = Modifier.height(16.dp))
     VerificationItem(

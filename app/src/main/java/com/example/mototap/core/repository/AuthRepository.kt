@@ -23,6 +23,10 @@ interface AuthRepository {
 
     suspend fun updateUserProfile(profile: UserProfile): Result<Unit>
 
+    suspend fun updateGarageProfilePhotos(userId: String, photos: List<String>): Result<List<String>>
+
+    suspend fun updateGarageLocationName(userId: String, locationName: String): Result<String>
+
     suspend fun uploadSignupImage(
         userId: String,
         folder: String,
@@ -55,6 +59,7 @@ interface AuthRepository {
         latitude: Double,
         longitude: Double,
         address: String,
+        locationName: String = "",
         garageMode: String = "own",
         inviteCode: String = "",
         workingHours: com.example.mototap.core.util.WorkingHours? = null,
@@ -69,6 +74,7 @@ interface AuthRepository {
         latitude: Double,
         longitude: Double,
         address: String,
+        locationName: String = "",
         workingHours: com.example.mototap.core.util.WorkingHours? = null,
     ): Result<Unit>
 

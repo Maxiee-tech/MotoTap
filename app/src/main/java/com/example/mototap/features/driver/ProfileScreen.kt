@@ -1,6 +1,9 @@
 package com.example.mototap.features.driver
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +31,10 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.mototap.features.auth.AuthUiState
 import com.example.mototap.features.auth.AuthViewModel
+import com.example.mototap.features.auth.LocationNamePicker
 import com.example.mototap.R
+import com.example.mototap.core.model.GarageMemberRole
+import com.example.mototap.core.model.UserRole
 import com.example.mototap.core.util.computeLoyalty
 import com.example.mototap.ui.theme.MotoRed
 import com.google.firebase.auth.FirebaseAuth
@@ -62,6 +68,13 @@ fun ProfileScreen(
     
     var showVehicleDialog by remember { mutableStateOf(false) }
     var editingVehicle by remember { mutableStateOf<com.example.mototap.core.model.VehicleProfile?>(null) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val garagePhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { viewModel.updateGarageProfilePhoto(context, it) }
+    }
 
     val loyaltyPoints = remember(userProfile, driverUiState.jobs) {
         computeLoyalty(userProfile, driverUiState.jobs).available
@@ -237,6 +250,136 @@ fun ProfileScreen(
                             label = "Phone Number",
                             value = userProfile?.phone?.takeIf { it.isNotBlank() } ?: "Not provided"
                         )
+                    }
+                }
+
+                if (userProfile?.role == UserRole.MECHANIC || userProfile?.role == UserRole.PARTS_DEALER) {
+                    item {
+                        val profile = userProfile ?: return@item
+                        val canEditGaragePhoto = !profile.garageRole.equals(
+                            GarageMemberRole.MECHANIC,
+                            ignoreCase = true,
+                        )
+                        var draftLocationName by remember(profile.locationName) {
+                            mutableStateOf(profile.locationName)
+                        }
+                        val photoUrl = profile.garagePhotos.firstOrNull().orEmpty()
+                        val shopLabel = if (profile.role == UserRole.PARTS_DEALER) {
+                            "SHOP PROFILE PHOTO"
+                        } else {
+                            "GARAGE PROFILE PHOTO"
+                        }
+                        Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            ProfileInfoCard(
+                                icon = Icons.Default.Home,
+                                label = shopLabel.lowercase().replaceFirstChar { it.uppercase() },
+                                value = profile.institutionName.takeIf { it.isNotBlank() }
+                                    ?: if (profile.role == UserRole.PARTS_DEALER) "Shop" else "Garage",
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (canEditGaragePhoto) Modifier.clickable {
+                                            garagePhotoLauncher.launch(
+                                                PickVisualMediaRequest(
+                                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                                )
+                                            )
+                                        } else Modifier
+                                    ),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(72.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.DarkGray.copy(alpha = 0.5f),
+                                    ) {
+                                        if (photoUrl.isNotBlank()) {
+                                            AsyncImage(
+                                                model = photoUrl,
+                                                contentDescription = shopLabel,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clip(RoundedCornerShape(10.dp)),
+                                                contentScale = ContentScale.Crop,
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Home,
+                                                contentDescription = null,
+                                                tint = Color.LightGray,
+                                                modifier = Modifier.padding(16.dp),
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = shopLabel,
+                                            color = MotoRed,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                        )
+                                        Text(
+                                            text = when {
+                                                uiState is AuthUiState.Loading -> "Uploading…"
+                                                photoUrl.isNotBlank() -> "Clients see this on your listing"
+                                                else -> "Add a clear shop photo"
+                                            },
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                        )
+                                        if (canEditGaragePhoto) {
+                                            Text(
+                                                text = if (photoUrl.isBlank()) "ADD PHOTO" else "CHANGE PHOTO",
+                                                color = MotoRed,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.padding(top = 6.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            if (uiState is AuthUiState.Error) {
+                                Text(
+                                    text = (uiState as AuthUiState.Error).message,
+                                    color = Color(0xFFFF6B6B),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            if (canEditGaragePhoto) {
+                                LocationNamePicker(
+                                    locationName = draftLocationName,
+                                    onLocationNameChange = { draftLocationName = it },
+                                    latitude = profile.latitude,
+                                    longitude = profile.longitude,
+                                    onPlacePicked = { place ->
+                                        draftLocationName = place.name
+                                        viewModel.updateGarageLocationName(place.name)
+                                    },
+                                    showSave = true,
+                                    onSave = { viewModel.updateGarageLocationName(draftLocationName) },
+                                    isSaving = uiState is AuthUiState.Loading,
+                                )
+                            } else {
+                                ProfileInfoCard(
+                                    icon = Icons.Default.LocationOn,
+                                    label = "Location name",
+                                    value = profile.locationName.ifBlank { "Not provided" },
+                                )
+                            }
+                        }
                     }
                 }
 

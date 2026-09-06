@@ -9,6 +9,8 @@ object VehicleCatalogData {
 
     const val VERSION = 1
 
+    data class VehicleTypeOption(val id: String, val name: String)
+
     private data class Make(val name: String, val models: List<String>)
     private data class Category(val id: String, val name: String, val makes: List<Make>)
 
@@ -196,6 +198,26 @@ object VehicleCatalogData {
         }
         return byLowerMake.mapValues { (_, value) ->
             value.first to value.second.sortedWith(String.CASE_INSENSITIVE_ORDER)
+        }
+    }
+
+    fun vehicleTypeOptions(): List<VehicleTypeOption> =
+        categories.map { VehicleTypeOption(it.id, it.name) }
+
+    fun knownVehicleTypeIds(): Set<String> = categories.map { it.id }.toSet()
+
+    /** Category IDs whose catalog includes this make (and model, when provided). */
+    fun categoryIdsForVehicle(make: String?, model: String?): List<String> {
+        val makeKey = make?.trim()?.lowercase().orEmpty()
+        if (makeKey.isEmpty()) return emptyList()
+        val modelKey = model?.trim()?.lowercase().orEmpty()
+        return categories.mapNotNull { category ->
+            val matchesMake = category.makes.any { entry ->
+                if (entry.name.trim().lowercase() != makeKey) return@any false
+                if (modelKey.isEmpty()) true
+                else entry.models.any { it.trim().lowercase() == modelKey }
+            }
+            if (matchesMake) category.id else null
         }
     }
 

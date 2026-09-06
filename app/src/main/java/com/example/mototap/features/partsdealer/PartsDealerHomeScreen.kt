@@ -71,7 +71,7 @@ fun PartsDealerHomeScreen(
             InfoCard(
                 title = "LOCATION",
                 value = when {
-                    profile?.address?.isNotBlank() == true -> profile.address
+                    profile?.locationName?.isNotBlank() == true -> profile.locationName
                     profile?.latitude != null && profile.longitude != null -> "Location pinned"
                     else -> "Not set"
                 },

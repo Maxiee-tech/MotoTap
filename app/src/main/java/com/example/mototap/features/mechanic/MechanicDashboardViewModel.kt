@@ -18,6 +18,10 @@ import com.example.mototap.core.util.getDefaultServicePrice
 import com.example.mototap.core.util.isTowingService
 import com.example.mototap.core.util.toFlatServicePrices
 import com.example.mototap.core.util.vehicleOnlyPriceMap
+import com.example.mototap.core.util.JobAdditionalServices
+import com.example.mototap.core.data.VehicleCatalogData
+import com.example.mototap.core.util.garageServicesVehicle
+import com.example.mototap.core.util.normalizeVehicleTypes
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,7 +58,12 @@ data class MechanicUiState(
     val garageServicePrices: Map<String, Long> = emptyMap(),
     /** Towing make:model -> KSh/km rates for the garage catalog. */
     val garageVehiclePrices: Map<String, Map<String, Long>> = emptyMap(),
+    val garageVehicleTypes: List<String> = emptyList(),
+    val garagePhotos: List<String> = emptyList(),
+    val locationName: String = "",
     val isSavingGarageCatalog: Boolean = false,
+    val isSavingGaragePhoto: Boolean = false,
+    val isSavingLocationName: Boolean = false,
 ) {
     val isGarageMember: Boolean get() = garageId.isNotBlank()
     val isGarageOwner: Boolean get() = garageRole == GarageMemberRole.OWNER
@@ -72,6 +81,7 @@ class MechanicDashboardViewModel(
     private val _selectedSkills = MutableStateFlow<List<String>>(emptyList())
     private val _servicePrices = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val _serviceVehiclePrices = MutableStateFlow<Map<String, Map<String, Long>>>(emptyMap())
+    private val _garageVehicleTypes = MutableStateFlow<List<String>>(emptyList())
 
     init {
         viewModelScope.launch {
@@ -95,6 +105,7 @@ class MechanicDashboardViewModel(
                         serviceVehiclePrices = vehiclePrices,
                         latitude = profile?.latitude,
                         longitude = profile?.longitude,
+                        locationName = profile?.locationName.orEmpty(),
                         garageId = profile?.garageId ?: "",
                         garageRole = profile?.garageRole ?: "",
                     )
@@ -131,9 +142,15 @@ class MechanicDashboardViewModel(
                             jobRepository.observeOpenJobs(),
                             jobRepository.observeMechanicJobs(userId),
                             _selectedSkills,
-                        ) { openJobs, myJobs, skills ->
+                            _garageVehicleTypes,
+                        ) { openJobs, myJobs, skills, vehicleTypes ->
                             val newRequests = openJobs.filter { job ->
                                 job.status == JobStatus.REQUESTED &&
+                                    garageServicesVehicle(
+                                        vehicleTypes,
+                                        job.vehicleMake,
+                                        job.vehicleModel,
+                                    ) &&
                                     (skills.isEmpty() || skills.any {
                                         it.equals(job.issueType, ignoreCase = true)
                                     })
@@ -164,6 +181,7 @@ class MechanicDashboardViewModel(
                     _selectedSkills.value = emptyList()
                     _servicePrices.value = emptyMap()
                     _serviceVehiclePrices.value = emptyMap()
+                    _garageVehicleTypes.value = emptyList()
                 }
             }
         }
@@ -206,7 +224,11 @@ class MechanicDashboardViewModel(
             garageSelectedSkills = garage.skills,
             garageServicePrices = flatPrices,
             garageVehiclePrices = vehiclePrices,
+            garageVehicleTypes = garage.vehicleTypes,
+            garagePhotos = garage.garagePhotos,
+            locationName = garage.locationName.ifBlank { _uiState.value.locationName },
         )
+        _garageVehicleTypes.value = garage.vehicleTypes
     }
 
     fun approveJoinRequest(memberId: String) {
@@ -373,6 +395,29 @@ class MechanicDashboardViewModel(
         setGarageVehicleRate(serviceName, make, model, null)
     }
 
+    fun toggleGarageVehicleType(typeId: String) {
+        val current = _uiState.value.garageVehicleTypes.toMutableList()
+        val existing = current.firstOrNull { it.equals(typeId, ignoreCase = true) }
+        if (existing != null) {
+            current.removeAll { it.equals(typeId, ignoreCase = true) }
+        } else {
+            current.add(typeId)
+        }
+        val next = normalizeVehicleTypes(current)
+        _garageVehicleTypes.value = next
+        _uiState.value = _uiState.value.copy(garageVehicleTypes = next)
+    }
+
+    fun setAllGarageVehicleTypes(selected: Boolean) {
+        val next = if (selected) {
+            VehicleCatalogData.vehicleTypeOptions().map { it.id }
+        } else {
+            emptyList()
+        }
+        _garageVehicleTypes.value = next
+        _uiState.value = _uiState.value.copy(garageVehicleTypes = next)
+    }
+
     fun saveGarageCatalog(onSuccess: () -> Unit = {}) {
         val ownerId = FirebaseAuth.getInstance().currentUser?.uid ?: return
         val garageId = _uiState.value.garageId
@@ -388,14 +433,27 @@ class MechanicDashboardViewModel(
             return
         }
         val nested = buildServicePricesPayload(skills, flatPrices, vehiclePrices)
+        val vehicleTypes = _uiState.value.garageVehicleTypes
 
         _uiState.value = _uiState.value.copy(isSavingGarageCatalog = true)
         viewModelScope.launch {
-            val result = garageRepository.updateGarageCatalog(garageId, ownerId, skills, nested)
+            val result = garageRepository.updateGarageCatalog(
+                garageId,
+                ownerId,
+                skills,
+                nested,
+                vehicleTypes,
+            )
             _uiState.value = _uiState.value.copy(isSavingGarageCatalog = false)
             if (result.isSuccess) {
+                val typeCount = vehicleTypes.size
+                val typeLabel = if (typeCount == 0) {
+                    "all vehicle types"
+                } else {
+                    "$typeCount vehicle type${if (typeCount == 1) "" else "s"}"
+                }
                 _uiState.value = _uiState.value.copy(
-                    infoMessage = "Saved ${skills.size} garage service(s).",
+                    infoMessage = "Saved ${skills.size} garage service(s) and $typeLabel.",
                 )
                 onSuccess()
             } else {
@@ -403,6 +461,61 @@ class MechanicDashboardViewModel(
                     infoMessage = result.exceptionOrNull()?.message ?: "Failed to save garage prices",
                 )
             }
+        }
+    }
+
+    fun updateGarageProfilePhoto(context: android.content.Context, uri: android.net.Uri) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        if (!_uiState.value.isGarageOwner) {
+            _uiState.value = _uiState.value.copy(
+                infoMessage = "Only the garage owner can update the garage photo.",
+            )
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSavingGaragePhoto = true)
+            val upload = authRepository.uploadSignupImage(userId, "garage", uri, context)
+            if (upload.isFailure) {
+                _uiState.value = _uiState.value.copy(
+                    isSavingGaragePhoto = false,
+                    infoMessage = upload.exceptionOrNull()?.message ?: "Could not upload the garage photo.",
+                )
+                return@launch
+            }
+            val url = upload.getOrNull().orEmpty()
+            val result = authRepository.updateGarageProfilePhotos(userId, listOf(url))
+            _uiState.value = _uiState.value.copy(
+                isSavingGaragePhoto = false,
+                garagePhotos = result.getOrNull() ?: _uiState.value.garagePhotos,
+                infoMessage = if (result.isSuccess) {
+                    "Garage photo updated."
+                } else {
+                    result.exceptionOrNull()?.message ?: "Could not update the garage photo."
+                },
+            )
+        }
+    }
+
+    fun updateGarageLocationName(locationName: String) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        if (!_uiState.value.isGarageOwner && _uiState.value.garageId.isNotBlank()) {
+            _uiState.value = _uiState.value.copy(
+                infoMessage = "Only the garage owner can update the location name.",
+            )
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSavingLocationName = true)
+            val result = authRepository.updateGarageLocationName(userId, locationName)
+            _uiState.value = _uiState.value.copy(
+                isSavingLocationName = false,
+                locationName = result.getOrNull() ?: _uiState.value.locationName,
+                infoMessage = if (result.isSuccess) {
+                    "Location name updated."
+                } else {
+                    result.exceptionOrNull()?.message ?: "Could not update the location name."
+                },
+            )
         }
     }
 
@@ -422,6 +535,37 @@ class MechanicDashboardViewModel(
                     infoMessage = result.exceptionOrNull()?.message ?: "Failed to refresh invite code",
                 )
             }
+        }
+    }
+
+    fun addAdditionalServiceNote(jobId: String, text: String) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val job =
+            _uiState.value.ongoingJobs.find { it.id == jobId }
+                ?: _uiState.value.completedJobs.find { it.id == jobId }
+                ?: _uiState.value.garageJobs.find { it.id == jobId }
+                ?: return
+        viewModelScope.launch {
+            val profile = authRepository.getUserProfile(userId)
+            val note = JobAdditionalServices.createNote(
+                userId = userId,
+                authorRole = JobAdditionalServices.authorRole(
+                    job,
+                    userId,
+                    isGarageOwner = _uiState.value.isGarageOwner,
+                    isGarageMember = _uiState.value.isGarageMember,
+                ),
+                authorName = profile?.name.orEmpty(),
+                text = text,
+            )
+            val result = jobRepository.addAdditionalServiceNote(jobId, note)
+            _uiState.value = _uiState.value.copy(
+                infoMessage = if (result.isSuccess) {
+                    "Additional service added to the job card."
+                } else {
+                    result.exceptionOrNull()?.message ?: "Failed to add additional service"
+                },
+            )
         }
     }
 
@@ -455,20 +599,32 @@ class MechanicDashboardViewModel(
         }
     }
 
-    fun updateLocation(lat: Double, lon: Double) {
+    fun updateLocation(lat: Double, lon: Double, locationName: String = "") {
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        _uiState.value = _uiState.value.copy(latitude = lat, longitude = lon)
+        val name = locationName.trim().take(120)
+        _uiState.value = _uiState.value.copy(
+            latitude = lat,
+            longitude = lon,
+            locationName = name.ifBlank { _uiState.value.locationName },
+        )
 
         viewModelScope.launch {
             val profile = authRepository.getUserProfile(currentUserId)
             if (profile != null) {
-                val updatedProfile = profile.copy(latitude = lat, longitude = lon)
+                val updatedProfile = profile.copy(
+                    latitude = lat,
+                    longitude = lon,
+                    locationName = name.ifBlank { profile.locationName },
+                )
                 val result = authRepository.updateUserProfile(updatedProfile)
                 if (result.isFailure) {
                     _uiState.value = _uiState.value.copy(infoMessage = "Failed to update location")
-                } else {
-                    _uiState.value = _uiState.value.copy(infoMessage = "Location updated successfully")
+                    return@launch
                 }
+                if (name.isNotBlank()) {
+                    authRepository.updateGarageLocationName(currentUserId, name)
+                }
+                _uiState.value = _uiState.value.copy(infoMessage = "Location updated successfully")
             }
         }
     }

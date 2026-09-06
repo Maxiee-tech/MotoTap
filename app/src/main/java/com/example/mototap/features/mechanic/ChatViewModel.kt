@@ -20,6 +20,8 @@ import java.util.UUID
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val otherParticipantName: String = "User",
+    val otherParticipantRole: String = "",
+    val garageName: String = "",
     val isOtherTyping: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null
@@ -66,6 +68,7 @@ class ChatViewModel(
             if (resolvedPartnerName.isNotBlank() && resolvedPartnerName != "User") {
                 _uiState.update { it.copy(otherParticipantName = resolvedPartnerName) }
             }
+            applyPartnerShopDetails(otherId)
         }
     }
 
@@ -76,6 +79,18 @@ class ChatViewModel(
             if (name.isNotBlank()) {
                 _uiState.update { it.copy(otherParticipantName = name) }
             }
+            applyPartnerShopDetails(otherId)
+        }
+    }
+
+    private suspend fun applyPartnerShopDetails(otherId: String) {
+        val role = chatRepository.resolvePartnerRole(otherId)
+        val garageName = chatRepository.resolvePartnerGarageName(otherId)
+        _uiState.update {
+            it.copy(
+                otherParticipantRole = role,
+                garageName = garageName,
+            )
         }
     }
 

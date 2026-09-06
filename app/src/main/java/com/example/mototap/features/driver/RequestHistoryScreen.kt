@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototap.core.model.JobRequest
 import com.example.mototap.core.model.JobStatus
+import com.example.mototap.core.util.JobAdditionalServices
+import com.example.mototap.features.jobs.JobAdditionalServicesSection
 import com.example.mototap.ui.theme.MotoRed
 import java.text.SimpleDateFormat
 import java.util.*
@@ -89,7 +91,11 @@ fun RequestHistoryScreen(
                 items(sortedJobs, key = { it.id }) { job ->
                     DriverRequestCard(
                         job = job,
+                        currentUserId = uiState.currentUserId,
                         onDelete = { viewModel.deleteRequest(job.id) },
+                        onAddAdditionalService = { text ->
+                            viewModel.addAdditionalServiceNote(job.id, text)
+                        },
                     )
                 }
             }
@@ -98,7 +104,12 @@ fun RequestHistoryScreen(
 }
 
 @Composable
-private fun DriverRequestCard(job: JobRequest, onDelete: () -> Unit) {
+private fun DriverRequestCard(
+    job: JobRequest,
+    currentUserId: String?,
+    onDelete: () -> Unit,
+    onAddAdditionalService: (String) -> Unit,
+) {
     val sdf = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
     val dateString = sdf.format(Date(job.createdAtMillis))
     val title = jobTitle(job)
@@ -141,6 +152,13 @@ private fun DriverRequestCard(job: JobRequest, onDelete: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = 8.dp),
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            JobAdditionalServicesSection(
+                notes = job.additionalServices,
+                canAdd = JobAdditionalServices.canAdd(job, currentUserId),
+                onAdd = onAddAdditionalService,
             )
 
             if (canDelete) {

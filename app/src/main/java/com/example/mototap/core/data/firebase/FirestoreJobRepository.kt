@@ -1,10 +1,12 @@
 package com.example.mototap.core.data.firebase
 
 import android.util.Log
+import com.example.mototap.core.model.JobAdditionalService
 import com.example.mototap.core.model.JobRequest
 import com.example.mototap.core.model.JobStatus
 import com.example.mototap.core.repository.JobRepository
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
@@ -173,6 +175,27 @@ class FirestoreJobRepository(
         }
     }
 
+    override suspend fun addAdditionalServiceNote(
+        jobId: String,
+        note: JobAdditionalService,
+    ): Result<Unit> = runCatching {
+        val text = note.text.trim()
+        require(jobId.isNotBlank() && text.isNotEmpty()) { "Missing job or additional service details." }
+        jobs.document(jobId).update(
+            "additionalServices",
+            FieldValue.arrayUnion(
+                mapOf(
+                    "id" to note.id,
+                    "authorId" to note.authorId,
+                    "authorRole" to note.authorRole,
+                    "authorName" to note.authorName.trim().take(120),
+                    "text" to text.take(500),
+                    "createdAtMillis" to note.createdAtMillis,
+                )
+            )
+        ).await()
+    }
+
     override suspend fun updateJobStatus(jobId: String, status: JobStatus): Result<Unit> = runCatching {
         jobs.document(jobId)
             .update("status", status.name)
@@ -222,6 +245,24 @@ class FirestoreJobRepository(
             serviceCategory = getString("serviceCategory") ?: "",
             driverName = getString("driverName") ?: "",
             driverPhotoUrl = getString("driverPhotoUrl") ?: "",
+            additionalServices = parseAdditionalServices(get("additionalServices")),
         )
+    }
+
+    private fun parseAdditionalServices(raw: Any?): List<JobAdditionalService> {
+        val items = raw as? List<*> ?: return emptyList()
+        return items.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            val text = map["text"]?.toString()?.trim().orEmpty()
+            if (text.isEmpty()) return@mapNotNull null
+            JobAdditionalService(
+                id = map["id"]?.toString().orEmpty(),
+                authorId = map["authorId"]?.toString().orEmpty(),
+                authorRole = map["authorRole"]?.toString().orEmpty(),
+                authorName = map["authorName"]?.toString().orEmpty(),
+                text = text.take(500),
+                createdAtMillis = (map["createdAtMillis"] as? Number)?.toLong() ?: 0L,
+            )
+        }.take(30)
     }
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Chat storage aligned with mototap_web `FirebaseChatService.js`:
@@ -32,6 +33,7 @@ class FirestoreChatRepository(
 
     private val chats = firestore.collection("chats")
     private val legacyMessages = firestore.collection("chatMessages")
+    private val garageNameCache = ConcurrentHashMap<String, String>()
 
     override fun observeMessages(
         roomId: String,
@@ -300,6 +302,9 @@ class FirestoreChatRepository(
                         val photoUrl = doc.getString("partnerPhotoUrl")
                             ?.takeIf { it.isNotBlank() }
                             ?: resolvePartnerPhotoUrl(partnerId)
+                        val garageName = doc.getString("partnerGarageName")
+                            ?.takeIf { it.isNotBlank() }
+                            ?: if (isBusinessRole(role)) resolveGarageName(partnerId) else ""
 
                         byPartner[partnerId] = ChatSummary(
                             roomId = roomId,
@@ -314,6 +319,7 @@ class FirestoreChatRepository(
                             otherUserName = name,
                             otherUserRole = role,
                             otherUserPhotoUrl = photoUrl,
+                            garageName = garageName,
                             unread = unread,
                         )
                     }
@@ -502,6 +508,12 @@ class FirestoreChatRepository(
         return resolveDisplayName(partnerId)
     }
 
+    override suspend fun resolvePartnerGarageName(partnerId: String): String =
+        resolveGarageName(partnerId)
+
+    override suspend fun resolvePartnerRole(partnerId: String): String =
+        resolveRole(partnerId)
+
     private suspend fun syncChatPartnerEntries(
         participants: List<String>,
         participantNames: Map<String, String>,
@@ -516,14 +528,20 @@ class FirestoreChatRepository(
         val pairs = listOf(userA to userB, userB to userA)
         pairs.forEach { (ownerId, partnerId) ->
             val partnerPhoto = resolvePartnerPhotoUrl(partnerId)
+            val partnerRole = resolveRole(partnerId)
             val payload = mutableMapOf<String, Any>(
                 "partnerId" to partnerId,
                 "partnerName" to (participantNames[partnerId] ?: "User"),
-                "partnerRole" to resolveRole(partnerId),
+                "partnerRole" to partnerRole,
                 "participantIds" to participants.sorted(),
                 "roomId" to roomId,
                 "updatedAtMillis" to millis,
             )
+            if (isBusinessRole(partnerRole)) {
+                resolveGarageName(partnerId).takeIf { it.isNotBlank() }?.let {
+                    payload["partnerGarageName"] = it.take(120)
+                }
+            }
             if (partnerPhoto.isNotBlank()) {
                 payload["partnerPhotoUrl"] = partnerPhoto
             }
@@ -550,6 +568,43 @@ class FirestoreChatRepository(
                 else emptyList()
             }
         }
+    }
+
+    private fun isBusinessRole(role: String): Boolean {
+        val value = role.trim().lowercase()
+        return value == "mechanic" || value == "parts_dealer" || value == "parts dealer"
+    }
+
+    private suspend fun resolveGarageName(userId: String): String {
+        if (userId.isBlank()) return ""
+        garageNameCache[userId]?.let { return it }
+
+        var resolved = ""
+        runCatching {
+            val public = firestore.collection("publicProfiles").document(userId).get().await()
+            val garageId = public.getString("garageId")?.trim().orEmpty()
+            if (garageId.isNotEmpty()) {
+                garageNameCache["g:$garageId"]?.let { cached ->
+                    garageNameCache[userId] = cached
+                    return cached
+                }
+                val garage = firestore.collection("garages").document(garageId).get().await()
+                garage.getString("name")?.trim()?.takeIf { it.isNotBlank() }?.let { resolved = it }
+            }
+            if (resolved.isBlank()) {
+                resolved = public.getString("institutionName")?.trim().orEmpty()
+            }
+        }
+        if (resolved.isBlank()) {
+            runCatching {
+                val user = firestore.collection("users").document(userId).get().await()
+                resolved = user.getString("institutionName")?.trim().orEmpty()
+            }
+        }
+        if (resolved.isNotBlank()) {
+            garageNameCache[userId] = resolved
+        }
+        return resolved
     }
 
     private suspend fun resolveDisplayName(userId: String): String {

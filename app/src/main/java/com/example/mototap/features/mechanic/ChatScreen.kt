@@ -21,12 +21,29 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototap.core.model.ChatMessage
 import com.example.mototap.ui.theme.MotoRed
 import java.text.SimpleDateFormat
 import java.util.*
+
+private fun chatHeaderSubtitle(personName: String, role: String, garageName: String): String {
+    if (garageName.isBlank()) return ""
+    val roleLabel = when (role.trim().lowercase()) {
+        "mechanic" -> "Mechanic"
+        "parts_dealer", "parts dealer" -> "Parts dealer"
+        "driver" -> "Driver"
+        else -> if (role.isBlank()) "" else role.replace('_', ' ')
+            .replaceFirstChar { it.uppercase() }
+    }
+    return if (personName.isNotBlank() && personName != garageName && roleLabel.isNotBlank()) {
+        "$roleLabel · $personName"
+    } else {
+        roleLabel
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,14 +74,32 @@ fun ChatScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        val garageName = uiState.garageName.trim()
+                        val personName = uiState.otherParticipantName.trim().ifBlank { "User" }
+                        val title = if (garageName.isNotEmpty()) garageName else personName
                         Text(
-                            text = uiState.otherParticipantName.uppercase(), 
-                            color = Color.White, 
-                            fontWeight = FontWeight.Bold, 
-                            fontSize = 18.sp
+                            text = title.uppercase(),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val subtitle = chatHeaderSubtitle(
+                            personName = personName,
+                            role = uiState.otherParticipantRole,
+                            garageName = garageName,
                         )
                         if (uiState.isOtherTyping) {
                             Text("typing...", color = Color.Green, fontSize = 10.sp)
+                        } else if (subtitle.isNotEmpty()) {
+                            Text(
+                                text = subtitle,
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                            )
                         }
                     }
                 },

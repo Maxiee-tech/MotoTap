@@ -130,6 +130,9 @@ class FirebaseAuthRepository(
             payload["institutionName"] = it
         }
         userDoc.getString("garageId")?.trim()?.takeIf { it.isNotEmpty() }?.let { payload["garageId"] = it }
+        userDoc.getString("locationName")?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            payload["locationName"] = it
+        }
         userDoc.getDouble("rating")?.let { payload["rating"] = it }
         userDoc.getLong("reviewCount")?.let { payload["reviewCount"] = it }
         val hours = normalizeWorkingHours(userDoc.get("workingHours"))
@@ -160,7 +163,12 @@ class FirebaseAuthRepository(
                 val garage = garageById[garageId]
                 mechanic.copy(
                     garageServicePrices = garage?.servicePrices ?: emptyMap(),
+                    garageVehicleTypes = garage?.vehicleTypes ?: emptyList(),
+                    garagePhotos = garage?.garagePhotos?.takeIf { it.isNotEmpty() }
+                        ?: mechanic.garagePhotos,
                     workingHours = garage?.workingHours ?: mechanic.workingHours,
+                    locationName = garage?.locationName?.takeIf { it.isNotBlank() }
+                        ?: mechanic.locationName,
                 )
             }
         }
@@ -322,6 +330,7 @@ class FirebaseAuthRepository(
             val garageId = document.getString("garageId") ?: ""
             val garageDoc = if (garageId.isNotBlank()) garageRepository.getGarage(garageId) else null
             val garageServicePrices = garageDoc?.servicePrices ?: emptyMap()
+            val garageVehicleTypes = garageDoc?.vehicleTypes ?: emptyList()
             val workingHours = garageDoc?.workingHours
                 ?: normalizeWorkingHours(document.get("workingHours"))
 
@@ -363,6 +372,9 @@ class FirebaseAuthRepository(
                 latitude = document.getDouble("latitude"),
                 longitude = document.getDouble("longitude"),
                 address = document.getString("address") ?: "",
+                locationName = document.getString("locationName")
+                    ?: garageDoc?.locationName
+                    ?: "",
                 garagePhotos = garagePhotos.map { normalizeUrl(it) },
                 skills = skills,
                 availableServices = availableServices,
@@ -373,6 +385,7 @@ class FirebaseAuthRepository(
                 onboardingComplete = document.getBoolean("onboardingComplete") == true,
                 servicePrices = normalizeServicePrices(document.get("servicePrices")),
                 garageServicePrices = garageServicePrices,
+                garageVehicleTypes = garageVehicleTypes,
                 workingHours = workingHours,
             )
         } catch (e: Exception) {
@@ -459,6 +472,7 @@ class FirebaseAuthRepository(
         latitude: Double,
         longitude: Double,
         address: String,
+        locationName: String,
         garageMode: String,
         inviteCode: String,
         workingHours: WorkingHours?,
@@ -490,6 +504,7 @@ class FirebaseAuthRepository(
                     "latitude" to garage.latitude,
                     "longitude" to garage.longitude,
                     "address" to garage.address,
+                    "locationName" to garage.locationName,
                     "garageId" to garage.id,
                     "garageRole" to GarageMemberRole.MECHANIC,
                     "garageMemberStatus" to GarageMemberStatus.PENDING,
@@ -519,6 +534,7 @@ class FirebaseAuthRepository(
                 "latitude" to latitude,
                 "longitude" to longitude,
                 "address" to address.trim(),
+                "locationName" to locationName.trim().take(120),
                 "onboardingStep" to 3,
                 "onboardingComplete" to true,
                 "status" to "PENDING",
@@ -533,6 +549,7 @@ class FirebaseAuthRepository(
                     name = profileName,
                     institutionName = institutionName.trim(),
                     address = address.trim(),
+                    locationName = locationName.trim().take(120),
                     latitude = latitude,
                     longitude = longitude,
                     garagePhotos = garagePhotos,
@@ -557,6 +574,7 @@ class FirebaseAuthRepository(
         latitude: Double,
         longitude: Double,
         address: String,
+        locationName: String,
         workingHours: WorkingHours?,
     ): Result<Unit> {
         return try {
@@ -569,6 +587,7 @@ class FirebaseAuthRepository(
                 "latitude" to latitude,
                 "longitude" to longitude,
                 "address" to address.trim(),
+                "locationName" to locationName.trim().take(120),
                 "onboardingStep" to 3,
                 "onboardingComplete" to true,
                 "status" to "PENDING",
@@ -586,6 +605,7 @@ class FirebaseAuthRepository(
                 "latitude" to latitude,
                 "longitude" to longitude,
                 "address" to address.trim(),
+                "locationName" to locationName.trim().take(120),
                 "garagePhotos" to garagePhotos,
                 "updatedAtMillis" to System.currentTimeMillis(),
             )
@@ -687,6 +707,7 @@ class FirebaseAuthRepository(
                 "latitude" to profile.latitude,
                 "longitude" to profile.longitude,
                 "address" to profile.address,
+                "locationName" to profile.locationName,
                 "garagePhotos" to profile.garagePhotos,
                 "skills" to profile.skills,
                 "availableServices" to profile.availableServices,
@@ -698,6 +719,112 @@ class FirebaseAuthRepository(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirebaseAuthRepo", "updateUserProfile error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun updateGarageProfilePhotos(
+        userId: String,
+        photos: List<String>,
+    ): Result<List<String>> {
+        return try {
+            val garagePhotos = photos.map { normalizeUrl(it) }.filter { it.isNotBlank() }.take(5)
+            if (garagePhotos.isEmpty()) {
+                return Result.failure(IllegalArgumentException("Choose a garage photo."))
+            }
+
+            val userRef = firestore.collection("users").document(userId)
+            val snap = userRef.get().await()
+            if (!snap.exists()) {
+                return Result.failure(IllegalStateException("Profile not found."))
+            }
+            val garageRole = snap.getString("garageRole")?.trim().orEmpty()
+            if (garageRole == GarageMemberRole.MECHANIC) {
+                return Result.failure(
+                    IllegalStateException("Only the garage owner can update the garage photo."),
+                )
+            }
+
+            userRef.update("garagePhotos", garagePhotos).await()
+
+            val garageId = snap.getString("garageId")?.trim().orEmpty()
+            if (garageRole == GarageMemberRole.OWNER && garageId.isNotEmpty()) {
+                firestore.collection("garages").document(garageId)
+                    .update(
+                        mapOf(
+                            "garagePhotos" to garagePhotos,
+                            "updatedAtMillis" to System.currentTimeMillis(),
+                        )
+                    )
+                    .await()
+            }
+
+            firestore.collection(PUBLIC_PROFILES_COLLECTION).document(userId)
+                .set(
+                    mapOf(
+                        "garagePhotos" to garagePhotos,
+                        "updatedAtMillis" to System.currentTimeMillis(),
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge(),
+                )
+                .await()
+
+            Result.success(garagePhotos)
+        } catch (e: Exception) {
+            Log.e("FirebaseAuthRepo", "updateGarageProfilePhotos error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun updateGarageLocationName(
+        userId: String,
+        locationName: String,
+    ): Result<String> {
+        return try {
+            val name = locationName.trim().take(120)
+            if (name.isBlank()) {
+                return Result.failure(IllegalArgumentException("Choose a popular place near you."))
+            }
+
+            val userRef = firestore.collection("users").document(userId)
+            val snap = userRef.get().await()
+            if (!snap.exists()) {
+                return Result.failure(IllegalStateException("Profile not found."))
+            }
+            val garageRole = snap.getString("garageRole")?.trim().orEmpty()
+            if (garageRole == GarageMemberRole.MECHANIC) {
+                return Result.failure(
+                    IllegalStateException("Only the garage owner can update the location name."),
+                )
+            }
+
+            userRef.update("locationName", name).await()
+
+            val garageId = snap.getString("garageId")?.trim().orEmpty()
+            if (garageRole == GarageMemberRole.OWNER && garageId.isNotEmpty()) {
+                firestore.collection("garages").document(garageId)
+                    .update(
+                        mapOf(
+                            "locationName" to name,
+                            "updatedAtMillis" to System.currentTimeMillis(),
+                        )
+                    )
+                    .await()
+            }
+
+            firestore.collection(PUBLIC_PROFILES_COLLECTION).document(userId)
+                .set(
+                    mapOf(
+                        "locationName" to name,
+                        "updatedAtMillis" to System.currentTimeMillis(),
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge(),
+                )
+                .await()
+
+            Result.success(name)
+        } catch (e: Exception) {
+            Log.e("FirebaseAuthRepo", "updateGarageLocationName error: ${e.message}")
             Result.failure(e)
         }
     }
@@ -863,6 +990,7 @@ class FirebaseAuthRepository(
             latitude = doc.getDouble("latitude"),
             longitude = doc.getDouble("longitude"),
             address = doc.getString("address") ?: "",
+            locationName = doc.getString("locationName") ?: "",
             garagePhotos = garagePhotos.map { normalizeUrl(it) },
             skills = skills,
             availableServices = availableServices,

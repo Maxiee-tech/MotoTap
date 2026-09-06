@@ -69,6 +69,7 @@ dependencies {
     // Maps
     implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
+    implementation("com.google.android.libraries.places:places:3.5.0")
     
     // Quick Request Dependencies - Using string notation to avoid version catalog accessor issues
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")

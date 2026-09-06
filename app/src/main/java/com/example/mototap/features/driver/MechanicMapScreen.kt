@@ -32,6 +32,8 @@ import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import com.example.mototap.core.model.UserProfile
 import com.example.mototap.core.util.formatDistanceMeters
+import com.example.mototap.core.util.formatPlaceAndDistance
+import com.example.mototap.core.util.garageServicesVehicle
 import com.example.mototap.core.util.getMechanicServicePrice
 import com.example.mototap.core.util.formatKsh
 import com.example.mototap.ui.theme.MotoRed
@@ -56,7 +58,12 @@ fun MechanicMapScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
-    val filteredMechanics = remember(uiState.availableMechanics, service) {
+    val filteredMechanics = remember(
+        uiState.availableMechanics,
+        service,
+        uiState.activeVehicleMake,
+        uiState.activeVehicleModel,
+    ) {
         val trimmedService = service.trim().lowercase()
         uiState.availableMechanics.filter { mechanic ->
             val hasService = mechanic.availableServices.any { it.trim().lowercase() == trimmedService } ||
@@ -65,7 +72,14 @@ fun MechanicMapScreen(
             val containsService = mechanic.availableServices.any { it.trim().lowercase().contains(trimmedService) } ||
                                   mechanic.skills.any { it.trim().lowercase().contains(trimmedService) }
 
-            (hasService || containsService) && mechanic.latitude != null && mechanic.longitude != null
+            (hasService || containsService) &&
+                mechanic.latitude != null &&
+                mechanic.longitude != null &&
+                garageServicesVehicle(
+                    mechanic.garageVehicleTypes,
+                    uiState.activeVehicleMake,
+                    uiState.activeVehicleModel,
+                )
         }
     }
 
@@ -294,10 +308,9 @@ fun MechanicInfoCard(
         }
     }
     val servicePrice = getMechanicServicePrice(mechanic, service, vehicleMake, vehicleModel)
-    val displayPhotoUrl = mechanic.profilePhotoUrl.takeIf { it.isNotBlank() }
-    val areaLabel = mechanic.address.trim().takeIf { it.isNotEmpty() }
-        ?.let { "Area: $it" }
-        ?: "Location shared on map"
+    val displayPhotoUrl = mechanic.garagePhotos.firstOrNull()?.takeIf { it.isNotBlank() }
+        ?: mechanic.profilePhotoUrl.takeIf { it.isNotBlank() }
+    val placeAndDistance = formatPlaceAndDistance(mechanic.locationName, distanceMeters)
 
     Card(
         modifier = Modifier
@@ -350,29 +363,18 @@ fun MechanicInfoCard(
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
-                    when {
-                        distanceMeters != null -> {
-                            Text(
-                                text = formatDistanceMeters(distanceMeters),
-                                color = Color.Gray,
-                                fontSize = 13.sp
-                            )
-                        }
-                        userLocation == null -> {
-                            Text(
-                                text = "Calculating distance...",
-                                color = Color.Gray,
-                                fontSize = 13.sp
-                            )
-                        }
-                        mechanic.latitude == null || mechanic.longitude == null -> {
-                            Text(
-                                text = "Location not shared yet",
-                                color = Color.Gray,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
+                    Text(
+                        text = when {
+                            placeAndDistance.isNotBlank() -> placeAndDistance
+                            userLocation == null -> "Calculating distance..."
+                            mechanic.latitude == null || mechanic.longitude == null ->
+                                "Location not shared yet"
+                            else -> formatDistanceMeters(distanceMeters ?: Float.NaN)
+                                .ifBlank { "Location shared on map" }
+                        },
+                        color = Color.Gray,
+                        fontSize = 13.sp
+                    )
                 }
                 IconButton(onClick = onDismiss) {
                     Text("X", fontWeight = FontWeight.Bold, color = Color.Gray)
@@ -380,11 +382,6 @@ fun MechanicInfoCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = areaLabel,
-                color = Color.DarkGray,
-                fontSize = 13.sp
-            )
             val hoursStatus = com.example.mototap.core.util.getOpenClosedStatus(mechanic.workingHours)
             Text(
                 text = hoursStatus.label,

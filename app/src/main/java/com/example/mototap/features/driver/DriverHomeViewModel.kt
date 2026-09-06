@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.mototap.core.model.JobRequest
 import com.example.mototap.core.model.UserProfile
+import com.example.mototap.core.util.JobAdditionalServices
 import com.example.mototap.core.repository.AuthRepository
 import com.example.mototap.core.repository.ChatRepository
 import com.example.mototap.core.repository.JobRepository
@@ -127,6 +128,26 @@ class DriverHomeViewModel(
     fun onPriceChanged(value: String) = _uiState.update { it.copy(priceInput = value) }
 
     fun deleteRequest(jobId: String) = viewModelScope.launch { jobRepository.deleteJob(jobId) }
+
+    fun addAdditionalServiceNote(jobId: String, text: String) {
+        val userId = _uiState.value.currentUserId ?: return
+        val job = _uiState.value.jobs.find { it.id == jobId } ?: return
+        viewModelScope.launch {
+            val profile = authRepository.getUserProfile(userId)
+            val note = JobAdditionalServices.createNote(
+                userId = userId,
+                authorRole = JobAdditionalServices.authorRole(job, userId),
+                authorName = profile?.name.orEmpty(),
+                text = text,
+            )
+            val result = jobRepository.addAdditionalServiceNote(jobId, note)
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(infoMessage = result.exceptionOrNull()?.message ?: "Failed to add additional service")
+                }
+            }
+        }
+    }
 
     @SuppressLint("MissingPermission")
     fun quickRequest(context: Context, serviceName: String) {

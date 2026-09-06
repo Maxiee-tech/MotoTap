@@ -3,6 +3,7 @@ package com.example.mototap.features.mechanic
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -29,12 +30,15 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,15 +51,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import com.example.mototap.core.model.JobRequest
 import com.example.mototap.core.model.JobStatus
+import com.example.mototap.core.util.JobAdditionalServices
+import com.example.mototap.features.jobs.JobAdditionalServicesSection
 import com.example.mototap.core.util.allSelectedServicesPriced
 import com.example.mototap.core.util.isTowingService
 import com.example.mototap.core.util.lookupFlatPrice
 import com.example.mototap.core.util.lookupVehiclePrices
 import com.example.mototap.core.util.parsePriceInput
+import com.example.mototap.features.auth.LocationNamePicker
 import com.example.mototap.ui.BottomNavigationBar
 import com.example.mototap.ui.theme.MotoRed
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import coil3.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.launch
@@ -78,6 +86,11 @@ fun ProviderDashboardScreen(
     var showServiceSelection by remember { mutableStateOf(false) }
     var showLocationSelection by remember { mutableStateOf(false) }
     var showGarageCatalog by remember { mutableStateOf(false) }
+    var draftLocationName by remember { mutableStateOf("") }
+
+    LaunchedEffect(uiState.locationName) {
+        draftLocationName = uiState.locationName
+    }
 
     // Force selection logic
     LaunchedEffect(uiState.selectedSkills, uiState.latitude, uiState.longitude) {
@@ -104,6 +117,11 @@ fun ProviderDashboardScreen(
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val garagePhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { viewModel.updateGarageProfilePhoto(context, it) }
+    }
 
     LaunchedEffect(uiState.infoMessage) {
         uiState.infoMessage?.let {
@@ -119,7 +137,7 @@ fun ProviderDashboardScreen(
                 title = {
                     Text(
                         text = when {
-                            showGarageCatalog -> "GARAGE SERVICE PRICES"
+                            showGarageCatalog -> "GARAGE CATALOG"
                             showServiceSelection -> "CHOOSE SERVICES"
                             showLocationSelection -> "SET GARAGE LOCATION"
                             else -> stringResource(R.string.provider_dashboard)
@@ -199,6 +217,13 @@ fun ProviderDashboardScreen(
                         modifier = Modifier.padding(bottom = 80.dp),
                         showPrices = true,
                         introText = "Optionally set shop-wide make/model prices. Towing rates are per kilometre (KSh/km) by make and model. Drivers see a mechanic's personal price when set; otherwise these garage prices apply.",
+                        header = {
+                            GarageVehicleTypesSection(
+                                selectedIds = uiState.garageVehicleTypes,
+                                onTypeToggled = { viewModel.toggleGarageVehicleType(it) },
+                                onSelectAll = { viewModel.setAllGarageVehicleTypes(it) },
+                            )
+                        },
                     )
 
                     val canSave = uiState.garageSelectedSkills.isNotEmpty() &&
@@ -338,16 +363,29 @@ fun ProviderDashboardScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    "Tap the map or move the camera to your garage location and click 'Confirm'",
+                                    "Tap the map or move the camera to your garage location, then pick a popular place drivers will see.",
                                     color = Color.White,
                                     fontSize = 14.sp,
-                                    modifier = Modifier.padding(bottom = 16.dp)
+                                    modifier = Modifier.padding(bottom = 12.dp)
                                 )
+                                LocationNamePicker(
+                                    locationName = draftLocationName,
+                                    onLocationNameChange = { draftLocationName = it },
+                                    latitude = uiState.latitude
+                                        ?: cameraPositionState.position.target.latitude,
+                                    longitude = uiState.longitude
+                                        ?: cameraPositionState.position.target.longitude,
+                                    onPlacePicked = { place ->
+                                        draftLocationName = place.name
+                                    },
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Button(
                                     onClick = {
                                         viewModel.updateLocation(
                                             cameraPositionState.position.target.latitude,
-                                            cameraPositionState.position.target.longitude
+                                            cameraPositionState.position.target.longitude,
+                                            draftLocationName,
                                         )
                                         showLocationSelection = false
                                     },
@@ -490,7 +528,9 @@ fun ProviderDashboardScreen(
                                             fontSize = 12.sp
                                         )
                                         Text(
-                                            text = if (uiState.latitude != null) "Location Pinned" else "Not set",
+                                            text = uiState.locationName.ifBlank {
+                                                if (uiState.latitude != null) "Location pinned" else "Not set"
+                                            },
                                             color = Color.White,
                                             fontSize = 14.sp
                                         )
@@ -498,6 +538,53 @@ fun ProviderDashboardScreen(
                                     Spacer(modifier = Modifier.weight(1f))
                                     Text("UPDATE", color = MotoRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
+                            }
+                        }
+
+                        if (uiState.isGarageOwner || uiState.garageId.isBlank()) {
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color.DarkGray.copy(alpha = 0.3f)),
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            text = "LOCATION NAME",
+                                            color = MotoRed,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        LocationNamePicker(
+                                            locationName = draftLocationName,
+                                            onLocationNameChange = { draftLocationName = it },
+                                            latitude = uiState.latitude,
+                                            longitude = uiState.longitude,
+                                            onPlacePicked = { place ->
+                                                draftLocationName = place.name
+                                                viewModel.updateGarageLocationName(place.name)
+                                            },
+                                            showSave = true,
+                                            onSave = { viewModel.updateGarageLocationName(draftLocationName) },
+                                            isSaving = uiState.isSavingLocationName,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (uiState.isGarageMember) {
+                            item {
+                                GaragePhotoCard(
+                                    photoUrl = uiState.garagePhotos.firstOrNull().orEmpty(),
+                                    canEdit = uiState.isGarageOwner,
+                                    isSaving = uiState.isSavingGaragePhoto,
+                                    onEdit = {
+                                        garagePhotoLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
+                                )
                             }
                         }
 
@@ -516,16 +603,23 @@ fun ProviderDashboardScreen(
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "GARAGE SERVICE PRICES",
+                                                text = "GARAGE SERVICES",
                                                 color = MotoRed,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 12.sp
                                             )
                                             Text(
-                                                text = if (uiState.garageSelectedSkills.isEmpty())
-                                                    "Optionally set shop prices for your garage"
-                                                else
-                                                    "${uiState.garageSelectedSkills.size} garage service(s)",
+                                                text = buildString {
+                                                    append(
+                                                        if (uiState.garageSelectedSkills.isEmpty())
+                                                            "Set vehicle types and shop prices"
+                                                        else
+                                                            "${uiState.garageSelectedSkills.size} garage service(s)"
+                                                    )
+                                                    if (uiState.garageVehicleTypes.isNotEmpty()) {
+                                                        append(" · ${uiState.garageVehicleTypes.size} vehicle type(s)")
+                                                    }
+                                                },
                                                 color = Color.White,
                                                 fontSize = 14.sp
                                             )
@@ -607,7 +701,12 @@ fun ProviderDashboardScreen(
                                     GarageJobItem(
                                         job = job,
                                         currentUserId = currentUserId,
+                                        isGarageOwner = uiState.isGarageOwner,
+                                        isGarageMember = uiState.isGarageMember,
                                         onAccept = { viewModel.acceptJob(job.id, currentUserId) },
+                                        onAddAdditionalService = { text ->
+                                            viewModel.addAdditionalServiceNote(job.id, text)
+                                        },
                                     )
                                 }
                             }
@@ -709,6 +808,100 @@ fun ProviderDashboardScreen(
 }
 
 @Composable
+private fun GarageVehicleTypeCheck(
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MotoRed,
+                modifier = Modifier.size(20.dp)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .background(Color.Transparent, CircleShape)
+                    .border(1.dp, Color.DarkGray, CircleShape)
+            )
+        }
+    }
+}
+
+@Composable
+private fun GarageVehicleTypesSection(
+    selectedIds: List<String>,
+    onTypeToggled: (String) -> Unit,
+    onSelectAll: (Boolean) -> Unit,
+) {
+    val options = remember { com.example.mototap.core.data.VehicleCatalogData.vehicleTypeOptions() }
+    val selected = remember(selectedIds) { selectedIds.toSet() }
+    val allSelected = options.isNotEmpty() && options.all { it.id in selected }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "Vehicles we can service",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+        )
+        Text(
+            text = "Select every vehicle type this garage can service. Use Select All if you work on the full catalog.",
+            color = Color.LightGray,
+            fontSize = 13.sp,
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onSelectAll(!allSelected) }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            GarageVehicleTypeCheck(selected = allSelected, onClick = { onSelectAll(!allSelected) })
+            Text(
+                text = "Select All",
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+            )
+        }
+
+        options.forEach { option ->
+            val isSelected = option.id in selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTypeToggled(option.id) }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GarageVehicleTypeCheck(
+                    selected = isSelected,
+                    onClick = { onTypeToggled(option.id) },
+                )
+                Text(
+                    text = option.name,
+                    color = if (isSelected) Color.White else Color.Gray,
+                    fontSize = 14.sp,
+                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun MechanicServiceSelection(
     selectedSkills: List<String>,
     servicePrices: Map<String, Long>,
@@ -720,6 +913,7 @@ fun MechanicServiceSelection(
     modifier: Modifier = Modifier,
     showPrices: Boolean = true,
     introText: String? = null,
+    header: (@Composable () -> Unit)? = null,
 ) {
     val categories = com.example.mototap.core.data.SERVICE_CATEGORIES.map { catalogCategory ->
         ServiceCategory(
@@ -734,6 +928,32 @@ fun MechanicServiceSelection(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        if (header != null) {
+            item { header() }
+        }
+
+        if (header != null) {
+            item {
+                Text(
+                    text = "Garage service prices",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                )
+            }
+        }
+
+        if (header != null) {
+            item {
+                Text(
+                    text = "Garage service prices",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                )
+            }
+        }
+
         item {
             Text(
                 text = introText ?: if (showPrices) {
@@ -1144,6 +1364,77 @@ fun GaragePendingJoinsCard(
 }
 
 @Composable
+private fun GaragePhotoCard(
+    photoUrl: String,
+    canEdit: Boolean,
+    isSaving: Boolean,
+    onEdit: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (canEdit && !isSaving) Modifier.clickable(onClick = onEdit) else Modifier
+            ),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(64.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = Color.DarkGray.copy(alpha = 0.5f),
+            ) {
+                if (photoUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = photoUrl,
+                        contentDescription = "Garage profile photo",
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = null,
+                        tint = Color.LightGray,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "GARAGE PROFILE PHOTO",
+                    color = MotoRed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                )
+                Text(
+                    text = when {
+                        isSaving -> "Uploading…"
+                        photoUrl.isNotBlank() -> "Shown to clients on the map"
+                        else -> "Add a clear shop photo"
+                    },
+                    color = Color.White,
+                    fontSize = 14.sp,
+                )
+            }
+            if (canEdit) {
+                Text(
+                    text = if (photoUrl.isBlank()) "ADD" else "EDIT",
+                    color = MotoRed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun GarageInviteCard(inviteCode: String, onRegenerate: () -> Unit) {
     val context = LocalContext.current
     Card(
@@ -1245,7 +1536,10 @@ fun NewGarageJobAlertBanner(count: Int, onClick: () -> Unit) {
 fun GarageJobItem(
     job: JobRequest,
     currentUserId: String,
+    isGarageOwner: Boolean = false,
+    isGarageMember: Boolean = false,
     onAccept: () -> Unit,
+    onAddAdditionalService: (String) -> Unit = {},
 ) {
     val assignee = when {
         job.mechanicId.isNullOrBlank() -> "Unassigned"
@@ -1287,6 +1581,17 @@ fun GarageJobItem(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        JobAdditionalServicesSection(
+            notes = job.additionalServices,
+            canAdd = JobAdditionalServices.canAdd(
+                job,
+                currentUserId,
+                isGarageOwner = isGarageOwner,
+                isGarageMember = isGarageMember,
+            ),
+            onAdd = onAddAdditionalService,
+        )
         if (canAccept) {
             Spacer(modifier = Modifier.height(8.dp))
             Button(

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,7 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototap.core.model.JobRequest
 import com.example.mototap.core.model.JobStatus
+import com.example.mototap.core.util.JobAdditionalServices
 import com.example.mototap.features.driver.formatJobStatus
+import com.example.mototap.features.jobs.JobAdditionalServicesSection
 import com.example.mototap.features.driver.jobTitle
 import com.example.mototap.ui.theme.MotoRed
 import java.text.SimpleDateFormat
@@ -92,6 +95,12 @@ fun MechanicHistoryScreen(
                 items(allJobs, key = { it.id }) { job ->
                     MechanicRequestCard(
                         job = job,
+                        currentUserId = FirebaseAuth.getInstance().currentUser?.uid,
+                        isGarageOwner = uiState.isGarageOwner,
+                        isGarageMember = uiState.isGarageMember,
+                        onAddAdditionalService = { text ->
+                            viewModel.addAdditionalServiceNote(job.id, text)
+                        },
                         onMessageDriver = {
                             onMessageDriver(
                                 job.driverId,
@@ -114,6 +123,10 @@ fun MechanicHistoryScreen(
 @Composable
 private fun MechanicRequestCard(
     job: JobRequest,
+    currentUserId: String?,
+    isGarageOwner: Boolean,
+    isGarageMember: Boolean,
+    onAddAdditionalService: (String) -> Unit,
     onMessageDriver: () -> Unit,
     onStartJob: () -> Unit,
     onCompleteJob: () -> Unit,
@@ -207,6 +220,18 @@ private fun MechanicRequestCard(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(top = 8.dp),
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            JobAdditionalServicesSection(
+                notes = job.additionalServices,
+                canAdd = JobAdditionalServices.canAdd(
+                    job,
+                    currentUserId,
+                    isGarageOwner = isGarageOwner,
+                    isGarageMember = isGarageMember,
+                ),
+                onAdd = onAddAdditionalService,
             )
 
             if (showMessage || progressLabel != null) {

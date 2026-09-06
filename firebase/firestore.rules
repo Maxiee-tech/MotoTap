@@ -47,6 +47,7 @@ service cloud.firestore {
         && (!('latitude' in data) || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90))
         && (!('longitude' in data) || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180))
         && (!('address' in data) || (data.address is string && data.address.size() <= 300))
+        && (!('locationName' in data) || (data.locationName is string && data.locationName.size() <= 120))
         && (!('garagePhotos' in data) || (data.garagePhotos is list && data.garagePhotos.size() <= 5))
         && (!('vehicles' in data) || (data.vehicles is list && data.vehicles.size() <= 20))
         && (!('rating' in data) || (data.rating is number && data.rating >= 0 && data.rating <= 5))
@@ -133,6 +134,7 @@ service cloud.firestore {
         && (!('latitude' in data) || data.latitude == null || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90))
         && (!('longitude' in data) || data.longitude == null || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180))
         && (!('address' in data) || (data.address is string && data.address.size() <= 300))
+        && (!('locationName' in data) || (data.locationName is string && data.locationName.size() <= 120))
         && (!('garagePhotos' in data) || (data.garagePhotos is list && data.garagePhotos.size() <= 5))
         && (!('rating' in data) || (data.rating is number && data.rating >= 0 && data.rating <= 5))
         && (!('reviewCount' in data) || (data.reviewCount is int && data.reviewCount >= 0))
@@ -230,7 +232,10 @@ service cloud.firestore {
                 && request.resource.data.lastMessageText.size() <= 500))
             && (!('partnerName' in request.resource.data)
               || (request.resource.data.partnerName is string
-                && request.resource.data.partnerName.size() <= 120));
+                && request.resource.data.partnerName.size() <= 120))
+            && (!('partnerGarageName' in request.resource.data)
+              || (request.resource.data.partnerGarageName is string
+                && request.resource.data.partnerGarageName.size() <= 120));
         }
 
         allow read: if signedIn() && request.auth.uid == userId;

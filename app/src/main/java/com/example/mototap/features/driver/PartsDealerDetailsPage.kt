@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.mototap.core.model.UserProfile
+import com.example.mototap.core.util.formatShopAreaLabel
 
 private val PartsOrange = Color(0xFFFF8800)
 
@@ -173,7 +174,7 @@ fun PartsDealerDetailsPage(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     Text(
-                        text = "Location: ${dealer.address.ifBlank { "Not specified" }}",
+                        text = "Location: ${formatShopAreaLabel(dealer.locationName).ifBlank { "Not specified" }}",
                         color = Color.LightGray,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 4.dp)

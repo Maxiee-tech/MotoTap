@@ -29,6 +29,7 @@ import coil3.compose.AsyncImage
 import com.example.mototap.core.model.UserProfile
 import com.example.mototap.core.model.Review
 import com.example.mototap.core.util.formatKsh
+import com.example.mototap.core.util.formatShopAreaLabel
 import com.example.mototap.core.util.getMechanicServicePrice
 import com.example.mototap.core.util.mechanicServiceInventory
 import com.example.mototap.ui.theme.MotoRed
@@ -187,7 +188,8 @@ fun MechanicDetailsPage(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Profile Photo & Mechanic Name - Fallback to certificate if profile photo is missing
-            val displayPhotoUrl = mechanic.profilePhotoUrl.takeIf { it.isNotBlank() }
+            val displayPhotoUrl = mechanic.garagePhotos.firstOrNull()?.takeIf { it.isNotBlank() }
+                ?: mechanic.profilePhotoUrl.takeIf { it.isNotBlank() }
                 ?: mechanic.certificatePhotoUrl.takeIf { it.isNotBlank() }
 
             if (!displayPhotoUrl.isNullOrBlank()) {
@@ -297,7 +299,8 @@ fun MechanicDetailsPage(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     Text(
-                        text = mechanic.address.ifBlank { "Location not specified" },
+                        text = formatShopAreaLabel(mechanic.locationName)
+                            .ifBlank { "Location not specified" },
                         color = Color.LightGray,
                         fontSize = 12.sp
                     )

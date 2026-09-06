@@ -46,6 +46,7 @@ class SignupValidationTest {
                 latitude = -1.28,
                 longitude = 36.82,
                 address = "Nairobi",
+                locationName = "Westlands",
                 locationLabel = "shop",
             )
         )
@@ -59,6 +60,7 @@ class SignupValidationTest {
                 latitude = null,
                 longitude = null,
                 address = "Nairobi",
+                locationName = "Westlands",
                 locationLabel = "shop",
             )
         )

@@ -10,6 +10,7 @@ data class ChatSummary(
     val otherUserName: String,
     val otherUserRole: String = "",
     val otherUserPhotoUrl: String = "",
+    val garageName: String = "",
     val unread: Boolean = false,
 ) {
     /** Legacy alias used by older call sites / navigation. */
@@ -57,4 +58,9 @@ interface ChatRepository {
         partnerId: String,
         roomId: String = "",
     ): String
+
+    /** Shop / garage name for mechanic or parts-dealer partners. */
+    suspend fun resolvePartnerGarageName(partnerId: String): String
+
+    suspend fun resolvePartnerRole(partnerId: String): String
 }

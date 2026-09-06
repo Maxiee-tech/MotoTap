@@ -74,6 +74,7 @@ data class UserProfile(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val address: String = "",
+    val locationName: String = "",
     val garagePhotos: List<String> = emptyList(),
     
     val skills: List<String> = emptyList(),
@@ -87,6 +88,8 @@ data class UserProfile(
     // Garage-wide default prices mirrored for discovery. Outer key = service name,
     // inner key = "_default" or "Make:Model" -> KSh price.
     val garageServicePrices: Map<String, Map<String, Long>> = emptyMap(),
+    // Catalog category IDs this garage services (empty = all / unset).
+    val garageVehicleTypes: List<String> = emptyList(),
 
     // Parts dealer specific fields (institutionName doubles as shop name,
     // experienceYears as years in business)
@@ -109,6 +112,15 @@ data class MechanicProfile(
     val approved: Boolean,
 )
 
+data class JobAdditionalService(
+    val id: String = "",
+    val authorId: String = "",
+    val authorRole: String = "",
+    val authorName: String = "",
+    val text: String = "",
+    val createdAtMillis: Long = 0L,
+)
+
 data class JobRequest(
     val id: String,
     val driverId: String,
@@ -127,6 +139,7 @@ data class JobRequest(
     val serviceCategory: String = "",
     val driverName: String = "",
     val driverPhotoUrl: String = "",
+    val additionalServices: List<JobAdditionalService> = emptyList(),
 )
 
 data class ChatMessage(

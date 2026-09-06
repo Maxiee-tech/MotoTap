@@ -1,5 +1,6 @@
 package com.example.mototap.core.repository
 
+import com.example.mototap.core.model.JobAdditionalService
 import com.example.mototap.core.model.JobRequest
 import com.example.mototap.core.model.JobStatus
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,8 @@ interface JobRepository {
     fun observeMechanicJobs(mechanicId: String): Flow<List<JobRequest>>
 
     fun observeOpenJobs(): Flow<List<JobRequest>>
+
+    suspend fun addAdditionalServiceNote(jobId: String, note: JobAdditionalService): Result<Unit>
 
     suspend fun updateJobStatus(jobId: String, status: JobStatus): Result<Unit>
     

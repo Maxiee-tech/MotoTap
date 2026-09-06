@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.mototap.core.model.UserProfile
+import com.example.mototap.core.util.formatPlaceAndDistance
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
@@ -197,6 +198,7 @@ fun PartsDealerMapScreen(
                     PartsDealerInfoCard(
                         dealer = dealer,
                         part = part,
+                        userLocation = uiState.userLocation,
                         isClosest = dealer.id == closestDealer?.id,
                         onDismiss = { selectedDealer = null },
                         onHeaderClick = {
@@ -238,6 +240,7 @@ fun PartsDealerMapScreen(
 fun PartsDealerInfoCard(
     dealer: UserProfile,
     part: String,
+    userLocation: LatLng? = null,
     isClosest: Boolean = false,
     onDismiss: () -> Unit,
     onHeaderClick: () -> Unit,
@@ -245,6 +248,18 @@ fun PartsDealerInfoCard(
 ) {
     val price = dealer.partPrices[part]
         ?: dealer.partPrices.entries.firstOrNull { it.key.trim().lowercase() == part.trim().lowercase() }?.value
+    val distanceMeters = remember(dealer, userLocation) {
+        val userLoc = userLocation
+        val lat = dealer.latitude
+        val lng = dealer.longitude
+        if (userLoc == null || lat == null || lng == null) {
+            null
+        } else {
+            val results = FloatArray(1)
+            Location.distanceBetween(userLoc.latitude, userLoc.longitude, lat, lng, results)
+            results[0]
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -304,6 +319,14 @@ fun PartsDealerInfoCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+            val placeLabel = formatPlaceAndDistance(dealer.locationName, distanceMeters)
+            if (placeLabel.isNotBlank()) {
+                Text(
+                    text = placeLabel,
+                    color = Color.DarkGray,
+                    fontSize = 13.sp
+                )
+            }
             Text(
                 text = "Part: $part",
                 color = Color.DarkGray,

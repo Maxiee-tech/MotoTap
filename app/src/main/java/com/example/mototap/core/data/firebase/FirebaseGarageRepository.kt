@@ -14,6 +14,7 @@ import com.example.mototap.core.model.GARAGE_INVITES_COLLECTION
 import com.example.mototap.core.repository.GarageRepository
 import com.example.mototap.core.repository.InviteLookup
 import com.example.mototap.core.util.normalizeServicePrices
+import com.example.mototap.core.util.normalizeVehicleTypes
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -47,6 +48,7 @@ class FirebaseGarageRepository(
             id = id,
             name = doc.getString("name")?.trim().orEmpty(),
             address = doc.getString("address")?.trim().orEmpty(),
+            locationName = doc.getString("locationName")?.trim().orEmpty(),
             latitude = if (lat != null && lat.isFinite()) lat else null,
             longitude = if (lng != null && lng.isFinite()) lng else null,
             garagePhotos = photos,
@@ -56,6 +58,9 @@ class FirebaseGarageRepository(
             memberCount = (doc.getLong("memberCount") ?: 0L).toInt().coerceAtLeast(0),
             skills = skills,
             servicePrices = normalizeServicePrices(doc.get("servicePrices")),
+            vehicleTypes = normalizeVehicleTypes(
+                (doc.get("vehicleTypes") as? List<*>)?.mapNotNull { it?.toString() }
+            ),
             workingHours = com.example.mototap.core.util.normalizeWorkingHours(doc.get("workingHours")),
             createdAtMillis = doc.getLong("createdAtMillis") ?: 0L,
             updatedAtMillis = doc.getLong("updatedAtMillis") ?: 0L,
@@ -143,6 +148,7 @@ class FirebaseGarageRepository(
             val garageData = hashMapOf<String, Any?>(
                 "name" to name,
                 "address" to profile.address.trim().take(300),
+                "locationName" to profile.locationName.trim().take(120),
                 "latitude" to (profile.latitude?.takeIf { it.isFinite() }),
                 "longitude" to (profile.longitude?.takeIf { it.isFinite() }),
                 "garagePhotos" to profile.garagePhotos.take(5),
@@ -152,6 +158,7 @@ class FirebaseGarageRepository(
                 "memberCount" to 1L,
                 "skills" to emptyList<String>(),
                 "servicePrices" to emptyMap<String, Any>(),
+                "vehicleTypes" to emptyList<String>(),
                 "workingHours" to (
                     profile.workingHours?.let {
                         com.example.mototap.core.util.workingHoursToFirestoreMap(it)
@@ -281,6 +288,7 @@ class FirebaseGarageRepository(
                     "garageMemberStatus" to GarageMemberStatus.PENDING,
                     "institutionName" to garage.name,
                     "address" to (garage.address),
+                    "locationName" to garage.locationName,
                     "latitude" to garage.latitude,
                     "longitude" to garage.longitude,
                     "garagePhotos" to garage.garagePhotos,
@@ -423,6 +431,7 @@ class FirebaseGarageRepository(
         ownerId: String,
         skills: List<String>,
         servicePrices: Map<String, Map<String, Long>>,
+        vehicleTypes: List<String>,
     ): Result<Garage> {
         return try {
             val garage = getGarage(garageId)
@@ -433,16 +442,24 @@ class FirebaseGarageRepository(
 
             val nextSkills = skills.map { it.trim() }.filter { it.isNotEmpty() }.take(50)
             val nextPrices = normalizeServicePrices(servicePrices)
+            val nextVehicleTypes = normalizeVehicleTypes(vehicleTypes)
 
             garageRef(garageId).update(
                 mapOf(
                     "skills" to nextSkills,
                     "servicePrices" to nextPrices,
+                    "vehicleTypes" to nextVehicleTypes,
                     "updatedAtMillis" to System.currentTimeMillis(),
                 )
             ).await()
 
-            Result.success(garage.copy(skills = nextSkills, servicePrices = nextPrices))
+            Result.success(
+                garage.copy(
+                    skills = nextSkills,
+                    servicePrices = nextPrices,
+                    vehicleTypes = nextVehicleTypes,
+                )
+            )
         } catch (e: Exception) {
             Log.e("FirebaseGarageRepo", "updateGarageCatalog error: ${e.message}")
             Result.failure(e)

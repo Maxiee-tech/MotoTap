@@ -30,6 +30,7 @@ object SignupValidation {
         latitude: Double?,
         longitude: Double?,
         address: String,
+        locationName: String = "",
         inviteVerified: Boolean = false,
         workingHours: WorkingHours? = null,
     ): String? {
@@ -45,7 +46,9 @@ object SignupValidation {
         }
 
         if (institutionName.isBlank()) return "Please enter your garage name."
-        if (address.isBlank()) return "Please enter your garage address."
+        if (locationName.isBlank()) {
+            return "Please enter a location name drivers will recognize."
+        }
         if (garagePhotos.isEmpty()) return "Please upload a front photo of your garage."
         if (latitude == null || longitude == null) {
             return "Please pin your garage location on the map."
@@ -62,13 +65,16 @@ object SignupValidation {
         latitude: Double?,
         longitude: Double?,
         address: String,
+        locationName: String = "",
         locationLabel: String,
         workingHours: WorkingHours? = null,
     ): String? {
         if (institutionName.isBlank()) return "Please enter your $locationLabel name."
         if (certificatePhotoUrl.isBlank()) return "Please upload your certification or license photo."
         if (experienceYears.isBlank()) return "Please select your experience."
-        if (address.isBlank()) return "Please enter your $locationLabel address."
+        if (locationName.isBlank()) {
+            return "Please enter a location name drivers will recognize."
+        }
         if (garagePhotos.isEmpty()) return "Please upload a front photo of your $locationLabel."
         if (latitude == null || longitude == null) {
             return "Please pin your $locationLabel location on the map."

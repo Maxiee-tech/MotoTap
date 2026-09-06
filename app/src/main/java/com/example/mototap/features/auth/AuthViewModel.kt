@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mototap.core.model.GarageMemberRole
 import com.example.mototap.core.model.UserProfile
 import com.example.mototap.core.model.UserRole
 import com.example.mototap.core.repository.AuthRepository
@@ -68,6 +69,7 @@ class AuthViewModel(
      val latitude = MutableStateFlow<Double?>(null)
      val longitude = MutableStateFlow<Double?>(null)
      val address = MutableStateFlow("")
+     val locationName = MutableStateFlow("")
      val garagePhotos = MutableStateFlow<List<String>>(emptyList())
      val availableServices = MutableStateFlow<List<String>>(emptyList())
 
@@ -165,6 +167,7 @@ class AuthViewModel(
         latitude.value = profile.latitude
         longitude.value = profile.longitude
         address.value = profile.address
+        locationName.value = profile.locationName
         garagePhotos.value = profile.garagePhotos
         availableServices.value = profile.availableServices
         workingHours.value = profile.workingHours
@@ -489,6 +492,7 @@ class AuthViewModel(
                 latitude = latitude.value,
                 longitude = longitude.value,
                 address = address.value,
+                locationName = locationName.value,
                 inviteVerified = inviteVerified.value,
                 workingHours = if (garageMode.value.trim() == "join") null else workingHours.value,
             )
@@ -500,6 +504,7 @@ class AuthViewModel(
                 latitude = latitude.value,
                 longitude = longitude.value,
                 address = address.value,
+                locationName = locationName.value,
                 locationLabel = "shop",
                 workingHours = workingHours.value,
             )
@@ -530,6 +535,7 @@ class AuthViewModel(
                     latitude = if (joinMode) 0.0 else latitude.value!!,
                     longitude = if (joinMode) 0.0 else longitude.value!!,
                     address = address.value,
+                    locationName = locationName.value,
                     garageMode = garageMode.value,
                     inviteCode = garageInviteCode.value,
                     workingHours = if (joinMode) null else workingHours.value,
@@ -544,6 +550,7 @@ class AuthViewModel(
                     latitude = latitude.value!!,
                     longitude = longitude.value!!,
                     address = address.value,
+                    locationName = locationName.value,
                     workingHours = workingHours.value,
                 )
             } else {
@@ -610,6 +617,62 @@ class AuthViewModel(
             
             if (result.isSuccess) {
                 _userProfile.value = newProfile
+            }
+        }
+    }
+
+    fun updateGarageProfilePhoto(context: Context, uri: android.net.Uri) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val currentProfile = _userProfile.value ?: return
+        if (currentProfile.garageRole.equals(GarageMemberRole.MECHANIC, ignoreCase = true)) {
+            _uiState.value = AuthUiState.Error("Only the garage owner can update the garage photo.")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = AuthUiState.Loading
+            val upload = authRepository.uploadSignupImage(userId, "garage", uri, context)
+            if (upload.isFailure) {
+                _uiState.value = AuthUiState.Error(
+                    upload.exceptionOrNull()?.message ?: "Could not upload the garage photo."
+                )
+                return@launch
+            }
+            val result = authRepository.updateGarageProfilePhotos(
+                userId,
+                listOf(upload.getOrNull().orEmpty()),
+            )
+            if (result.isSuccess) {
+                _userProfile.value = currentProfile.copy(
+                    garagePhotos = result.getOrNull() ?: currentProfile.garagePhotos,
+                )
+                _uiState.value = AuthUiState.Idle
+            } else {
+                _uiState.value = AuthUiState.Error(
+                    result.exceptionOrNull()?.message ?: "Could not update the garage photo."
+                )
+            }
+        }
+    }
+
+    fun updateGarageLocationName(locationName: String) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val currentProfile = _userProfile.value ?: return
+        if (currentProfile.garageRole.equals(GarageMemberRole.MECHANIC, ignoreCase = true)) {
+            _uiState.value = AuthUiState.Error("Only the garage owner can update the location name.")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = AuthUiState.Loading
+            val result = authRepository.updateGarageLocationName(userId, locationName)
+            if (result.isSuccess) {
+                val name = result.getOrNull().orEmpty()
+                _userProfile.value = currentProfile.copy(locationName = name)
+                this@AuthViewModel.locationName.value = name
+                _uiState.value = AuthUiState.Idle
+            } else {
+                _uiState.value = AuthUiState.Error(
+                    result.exceptionOrNull()?.message ?: "Could not update the location name."
+                )
             }
         }
     }
